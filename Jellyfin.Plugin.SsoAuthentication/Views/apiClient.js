@@ -137,6 +137,18 @@ localApiClient.setAuthenticationInfo(
   current_server.UserId,
 );
 
+// This bundle of jellyfin-apiclient sends its credentials as X-Emby-Authorization, which
+// Jellyfin 12 refuses unless legacy authorization is switched back on. Every request it makes
+// goes through setRequestHeaders, so send the same value as Authorization instead.
+const setRequestHeaders = localApiClient.setRequestHeaders.bind(localApiClient);
+localApiClient.setRequestHeaders = (headers) => {
+  setRequestHeaders(headers);
+  if (headers["X-Emby-Authorization"]) {
+    headers.Authorization = headers["X-Emby-Authorization"];
+    delete headers["X-Emby-Authorization"];
+  }
+};
+
 var connections = new jellyfinApiclient.ConnectionManager(
   credentials,
   appName,

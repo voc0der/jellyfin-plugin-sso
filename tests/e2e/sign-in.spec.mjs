@@ -6,10 +6,11 @@ import {
     jellyfinUser,
     signInAsAdmin,
     signInAtAuthelia,
+    signInWithPassword,
     signInWithSso,
     stack
 } from './harness/session.mjs';
-import { EXPOSED_USER, PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
+import { EXPOSED_USER, JELLYFIN_URL, LOCAL_USER, PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
 
 // Accounts carry this as their authentication provider when sign-in created them: it keeps
 // them from signing in with a password.
@@ -103,4 +104,27 @@ test('the settings page lists the provider in the dashboard', async ({ page }) =
 
     await expect(page.locator('#sso-config-page')).toBeVisible();
     await expect(page.locator('#selectProvider option', { hasText: PROVIDER })).toHaveCount(1);
+});
+
+test('an account with a password links its Authelia identity and then signs in with it', async ({ page }) => {
+    await signInWithPassword(page, LOCAL_USER);
+
+    await page.goto(`${JELLYFIN_URL}/SSOViews/linking`);
+    await expect(page.locator('body')).toContainText(PROVIDER);
+    await page.locator(`#sso-provider-list-oid .sso-provider-links-container[data-id="${PROVIDER}"] .sso-provider-add-link`).click();
+    await page.locator('#username-textfield').fill('dave');
+    await page.locator('#password-textfield').fill('dave-harness-pw');
+    await page.locator('#sign-in-button').click();
+    await page.waitForURL(/\/web\/(index\.html)?#\/home/, { timeout: 45_000 });
+
+    const { localUserId } = stack();
+    const links = await admin('GET', `/sso/oid/links/${localUserId}`);
+    expect(links[PROVIDER]).toEqual(['dave']);
+
+    // Dave's identity now opens Erin's account instead of making one of its own.
+    await page.context().clearCookies();
+    await page.evaluate(() => localStorage.clear());
+    await signInWithSso(page, 'dave');
+    expect(await currentUserId(page)).toBe(localUserId);
+    expect(await jellyfinUser('dave')).toBeUndefined();
 });

@@ -139,7 +139,7 @@ public sealed class SamlFlowTests : IDisposable
 
         Assert.Equal("text/html", result.ContentType);
         Assert.Contains("'https://jellyfin.example.test/sso/SAML/Auth/test'", result.Content, StringComparison.Ordinal);
-        Assert.Contains("if (false) await link(request);", result.Content, StringComparison.Ordinal);
+        Assert.Contains("if (false) await link(request, account);", result.Content, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public sealed class SamlFlowTests : IDisposable
     {
         var result = Assert.IsType<ContentResult>(PostedBack(SignedResponse("alice", "jellyfin-users")).SamlPost("test", relayState: "linking"));
 
-        Assert.Contains("if (true) await link(request);", result.Content, StringComparison.Ordinal);
+        Assert.Contains("if (true) await link(request, account);", result.Content, StringComparison.Ordinal);
     }
 
     [Fact]

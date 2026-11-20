@@ -424,19 +424,24 @@ const sleep = (milliseconds) => {
         var punycodeBaseUrl = protocol + punycodeDomain;
 
         return Base + @"
-async function link(request) {
+// The account signed in on this browser, if any: the one an identity is linked to.
+function signedInAccount() {
     const jfCredentialsString = localStorage.getItem(""jellyfin_credentials"");
 
-    if (jfCredentialsString == null) return;
+    if (jfCredentialsString == null) return null;
 
-    const jfCredentials = JSON.parse(jfCredentialsString);
-    const jfUser = jfCredentials['Servers'][0]['UserId'];
-    const jfToken = jfCredentials['Servers'][0]['AccessToken'];
+    const server = (JSON.parse(jfCredentialsString)['Servers'] || [])[0];
 
-    if (jfUser == null) return;
-    if (jfToken == null) return;
+    if (server == null || server['UserId'] == null || server['AccessToken'] == null) return null;
 
-    const url = '" + $"{punycodeBaseUrl}/sso/{mode}/Link/{provider}/" + @"' + jfUser;
+    return { userId: server['UserId'], token: server['AccessToken'] };
+}
+
+async function link(request, account) {
+    if (account == null) return;
+
+    const jfToken = account.token;
+    const url = '" + $"{punycodeBaseUrl}/sso/{mode}/Link/{provider}/" + @"' + account.userId;
 
     return new Promise(resolve => {
        var xhr = new XMLHttpRequest();
@@ -444,8 +449,9 @@ async function link(request) {
        xhr.setRequestHeader('Content-Type', 'application/json');
        xhr.setRequestHeader('Accept', 'application/json');
 
+       // Authorization, not X-Emby-Authorization: Jellyfin 12 refuses the legacy header.
        xhr.setRequestHeader(
-           'X-Emby-Authorization', 
+           'Authorization',
            `MediaBrowser Client=""${request.appName}"",Device=""${request.deviceName}"",DeviceId=""${request.deviceId}"",Version=""${request.appVersion}"",Token=""${jfToken}""`)
 
        xhr.onload = function(e) {
@@ -460,6 +466,8 @@ async function link(request) {
 }
 
 async function main() {
+    // Read the account to link to before the reset below wipes the stored credentials.
+    const account = " + $"{isLinking}".ToLower() + @" ? signedInAccount() : null;
     localStorage.removeItem('jellyfin_credentials');
     document.getElementById('iframe-main').src = '" + punycodeBaseUrl + @"/web/index.html';
 
@@ -477,7 +485,7 @@ async function main() {
 
     var request = {deviceId, appName, appVersion, deviceName, data};
 
-    if (" + $"{isLinking}".ToLower() + @") await link(request);
+    if (" + $"{isLinking}".ToLower() + @") await link(request, account);
 
     var url = '" + punycodeBaseUrl + "/sso/" + mode + "/Auth/" + provider + @"';
 

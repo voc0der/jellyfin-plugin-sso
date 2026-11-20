@@ -47,6 +47,9 @@ export const IDP_USERS = {
 };
 export const idpPassword = name => `${name}-harness-pw`;
 
+// A Jellyfin account made with a password, for linking an Authelia identity to.
+export const LOCAL_USER = { name: 'erin', password: 'erin-harness-pw' };
+
 // A Jellyfin account with Jellyfin's password provider and no password, which Jellyfin opens
 // to an empty password: how 9p4's plugin left the accounts it made on Jellyfin 12.
 export const EXPOSED_USER = { name: 'frank' };
@@ -399,6 +402,9 @@ export function providerConfiguration(overrides = {}) {
         DefaultUsernameClaim: 'preferred_username',
         DisablePushedAuthorization: true,
         SchemeOverride: 'https',
+        // Saved by every sign-in started at /sso/OID/start/, and what 4.0.x settings files
+        // carry. The linking page starts at the older /p/ path, which keeps whatever is saved.
+        NewPath: true,
         ...overrides
     };
 }
@@ -502,6 +508,10 @@ export async function startStack() {
 
     await jellyfin(base, 'POST', `/sso/OID/Add/${PROVIDER}`, { token: adminToken, body: providerConfiguration() });
 
+    const local = await jellyfin(base, 'POST', '/Users/New', {
+        token: adminToken,
+        body: { Name: LOCAL_USER.name, Password: LOCAL_USER.password }
+    });
     const exposed = await jellyfin(base, 'POST', '/Users/New', { token: adminToken, body: { Name: EXPOSED_USER.name } });
 
     return {
@@ -510,6 +520,7 @@ export async function startStack() {
         jellyfinVersion: info.Version,
         pluginVersion: plugin.Version,
         adminToken,
+        localUserId: local.Id,
         exposedUserId: exposed.Id
     };
 }
