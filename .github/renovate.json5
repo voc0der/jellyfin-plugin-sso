@@ -1,10 +1,6 @@
 {
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: [
-    "config:recommended",
-    "group:allNonMajor",
-    "helpers:pinGitHubActionDigests",
-  ],
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended', 'group:allNonMajor'],
   // Vulnerabilities come from two sources: this repository's Dependabot alerts, and
   // osv.dev, which also carries advisories that never reach GitHub's database. A fix
   // flagged by both still arrives as one PR.
@@ -21,18 +17,26 @@
       // Nobody reviews these before they merge, so a compromised publish gets a few days
       // to be caught and pulled first. Security fixes don't wait: Renovate opens them as
       // soon as a Dependabot alert or an osv.dev advisory appears.
-      matchUpdateTypes: ["minor", "patch", "pin", "digest"],
+      matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
       automerge: true,
-      minimumReleaseAge: "3 days",
+      minimumReleaseAge: '3 days',
     },
     {
       // The Jellyfin packages must match each other, and their version is the server this
       // plugin is built against, so they share one PR and never merge unattended.
-      matchPackageNames: ["Jellyfin.*"],
-      groupName: "Jellyfin packages",
+      matchPackageNames: ['Jellyfin.*'],
+      groupName: 'Jellyfin packages',
       automerge: false,
       // No PR until it's ticked under Pending Approval on the Dependency Dashboard, so the
       // plugin moves to a newer server's API when that's chosen, not when it's released.
+      dependencyDashboardApproval: true,
+    },
+    {
+      // Compiled against, never shipped: every Jellyfin server brings its own copy
+      // (13.0.4 in both 10.11 and 12), and that copy is the one the plugin runs with.
+      // Moving past what the server ships could compile against API it does not have.
+      matchPackageNames: ['Newtonsoft.Json'],
+      automerge: false,
       dependencyDashboardApproval: true,
     },
   ],

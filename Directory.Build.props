@@ -1,9 +1,27 @@
 <Project>
-  <PropertyGroup>
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <NuGetAuditMode>all</NuGetAuditMode>
-    <NuGetAuditLevel>high</NuGetAuditLevel>
-    <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-  </PropertyGroup>
+    <!--
+        One place for the version and the server it targets. build.sh and CI pass
+        VERSION in to override it at release time; everything else - the assembly
+        version, the generated meta.json, and the package references - reads from
+        here, so the manifest cannot disagree with the assembly, and the ABI cannot
+        drift from the packages the plugin was compiled against.
+
+        Version is the floor of the release line, not the last release: the release
+        workflow bumps the revision of whichever is newer, this or the latest release
+        tag. Raise it here to start a new line.
+
+        The GUID is this plugin's own, not the one 9p4/jellyfin-plugin-sso published:
+        Jellyfin treats the two as different plugins, so one never updates into the
+        other. scripts/verify-plugin-guid.sh keeps it that way.
+    -->
+    <PropertyGroup>
+        <Version>1.0.0.0</Version>
+        <AssemblyVersion>$(Version)</AssemblyVersion>
+        <FileVersion>$(Version)</FileVersion>
+        <Authors>voc0der</Authors>
+
+        <JellyfinPackageVersion>12.0.0</JellyfinPackageVersion>
+        <JellyfinTargetAbi>12.0.0.0</JellyfinTargetAbi>
+        <PluginGuid>3c3b1a1d-7470-466f-a565-b3041e54724d</PluginGuid>
+    </PropertyGroup>
 </Project>

@@ -2,98 +2,271 @@ name: Build and Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
-  workflow_dispatch:
+    branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: read  # the release label is read off the merged pull request
+
+# One release at a time. Two pushes landing together each derive their version from
+# the same latest tag, and `gh release create` tags whatever main points at when it
+# runs rather than the commit that was built. Queued, not cancelled: every labelled
+# merge still gets its own release.
+#
+# `cancel-in-progress: false` protects only the run that is executing; the pending
+# slot defaults to `queue: single`, which cancels the waiting run to make room for a
+# newer one and silently drops the middle merge's release. `queue: max` holds
+# pending runs instead.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+env:
+  # Where this plugin's own history starts: after 9p4/jellyfin-plugin-sso's last commit and
+  # the first scaffold on top of it, which the rebuild that followed replaced entirely. The
+  # first release's notes start here; later ones start at the previous release tag.
+  FORK_POINT: 586b86e0344c8aed08954dd502c860faf5f9160b
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
-        with:
-          global-json-file: global.json
-      - run: dotnet restore --locked-mode
-      - run: python3 scripts/plugin.py validate
-      - run: python3 -m unittest discover -s tests/tooling -v
-      - run: dotnet build --configuration Release --no-restore --warnaserror
-      - run: dotnet publish SSO-Auth/SSO-Auth.csproj --configuration Release --no-restore --output artifacts/publish
-      - name: Package build
-        run: |
-          version=$(python3 -c 'from scripts.plugin import build_metadata; print(build_metadata()["version"])')
-          python3 scripts/plugin.py package --version "$version" --build-tag "$GITHUB_SHA" --output artifacts/SSO_Authentication_build.zip
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: SSO-Authentication
-          path: artifacts/*.zip*
-          if-no-files-found: error
-          retention-days: 14
 
-  gate:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      release: ${{ steps.label.outputs.release }}
     steps:
-      - name: Check merged PR release label
-        id: label
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          release=false
-          for delay in 0 5 10 20; do
-            sleep "$delay"
-            prs=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")
-            if jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .merged_at != null and .merge_commit_sha == $sha and .base.ref == "main" and any(.labels[]; .name == "release"))' <<< "$prs" > /dev/null; then
-              release=true
-              break
-            fi
-            if [ "$(jq length <<< "$prs")" -gt 0 ]; then break; fi
-          done
-          echo "release=$release" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0  # Fetch all history for changelog generation
 
-  release:
-    needs: [build, gate]
-    if: needs.gate.outputs.release == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    concurrency:
-      group: sso-release
-      cancel-in-progress: false
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
-        with:
-          global-json-file: global.json
-      - name: Require checks on the release commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 scripts/wait-for-checks.py
-      - run: dotnet restore --locked-mode
-      - name: Publish versioned release and manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/release.sh
-      - name: Rebuild centralized plugin repository
-        env:
-          GH_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
-        run: gh api --method POST repos/voc0der/jellyfin-plugins/dispatches -f event_type=plugin-updated
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Check plugin GUID
+      run: CHECK_REMOTE_GUIDS=1 bash scripts/verify-plugin-guid.sh
+
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    # Landing on main does not release by itself: only a merged pull request that
+    # carries the `release` label does. Anything else - an unlabelled merge, a
+    # direct push - is built above and stops here, and its changes go out with the
+    # next labelled merge.
+    - name: Check for the release label
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      id: gate
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # The pull request whose merge produced this commit. GitHub can take a
+        # moment to associate a fresh merge commit with its pull request, so an
+        # empty answer is retried before it is believed.
+        pr=""
+        for delay in 0 5 10 20; do
+          sleep "$delay"
+          pr=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq 'map(select(.merge_commit_sha == "${{ github.sha }}")) | first // empty')
+          if [ -n "$pr" ]; then
+            break
+          fi
+        done
+
+        if [ -z "$pr" ]; then
+          echo "No merged pull request produced ${{ github.sha }}; not releasing."
+          echo "release=false" >> "$GITHUB_OUTPUT"
+        elif jq -e 'any(.labels[]; .name == "release")' <<< "$pr" > /dev/null; then
+          echo "#$(jq -r .number <<< "$pr") is labelled release; releasing."
+          echo "release=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "#$(jq -r .number <<< "$pr") is not labelled release; not releasing."
+          echo "release=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Generate version and changelog
+      if: steps.gate.outputs.release == 'true'
+      id: version
+      run: |
+        # Releases are tagged 1.0.0.1 and so on, without a "v"; 9p4's tags (v4.0.0.4 and
+        # earlier) are not this plugin's and are never matched. The version in
+        # Directory.Build.props is the floor of the release line: raising it there starts
+        # a new line; otherwise each release bumps the revision.
+        FLOOR=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -1)
+        LATEST_TAG=$(git tag --list '[0-9]*.[0-9]*.[0-9]*.[0-9]*' --merged HEAD --sort=-version:refname | head -n1)
+        BASE=$(printf '%s\n' "$FLOOR" ${LATEST_TAG:+"$LATEST_TAG"} | sort -V | tail -n1)
+        IFS='.' read -r MAJOR MINOR BUILD REVISION <<< "$BASE"
+        NEW_VERSION="${MAJOR}.${MINOR}.${BUILD}.$((REVISION + 1))"
+        PREVIOUS="${LATEST_TAG:-$FORK_POINT}"
+
+        echo "Floor: $FLOOR, latest release: ${LATEST_TAG:-none}, new version: $NEW_VERSION"
+        echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "## What's Changed"
+          echo ""
+          git log "${PREVIOUS}..HEAD" --pretty=format:"- %s (%h)" --no-merges
+          echo ""
+          echo ""
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS}...${NEW_VERSION}"
+        } > CHANGELOG.md
+
+        cat CHANGELOG.md
+
+    # build.sh runs the tests and refuses to package if a host assembly leaked into
+    # the archive, or if meta.json disagrees with the version, the ABI or the GUID.
+    - name: Build and package
+      if: steps.gate.outputs.release == 'true'
+      run: VERSION="${{ steps.version.outputs.version }}" ./build.sh
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: Jellyfin.Plugin.SsoAuthentication
+        path: artifacts/*.zip
+        if-no-files-found: ignore
+
+    # The release is created before manifest.json is touched, and that ordering is
+    # load-bearing. The manifest *is* the plugin catalogue - it is served straight off
+    # main - so a manifest commit landing before a failed `gh release create`
+    # advertises a version whose download URL 404s and whose checksum matches nothing.
+    # Failing here instead leaves the catalogue exactly as it was.
+    - name: Create Release
+      if: steps.gate.outputs.release == 'true'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        SERVER=$(grep -oP '(?<=<JellyfinPackageVersion>)[^<]+' Directory.Build.props | head -1)
+        REPO="${{ github.repository }}"
+        RAW="https://raw.githubusercontent.com/${REPO}/main"
+
+        {
+          cat CHANGELOG.md
+          echo ""
+          echo "## Install"
+          echo ""
+          echo "Add this repository under Dashboard > Plugins > Repositories:"
+          echo ""
+          echo "\`${RAW}/manifest.json\`"
+          echo ""
+          echo "Or install by hand with \`SSO_Authentication_${VERSION}.zip\`."
+          echo ""
+          echo "Built against Jellyfin ${SERVER}."
+        } > RELEASE_NOTES.md
+
+        # --target pins the tag to the commit these artifacts were built from.
+        # Without it the tag lands on main's current tip, which is not the same thing
+        # once a second merge is in flight.
+        gh release create "$VERSION" \
+          --title "Release $VERSION" \
+          --notes-file RELEASE_NOTES.md \
+          --target "${{ github.sha }}" \
+          artifacts/*.zip
+
+    # A created release is not the same as a complete one: a partial or dropped asset
+    # upload does not fail `gh release create`. The catalogue is about to promise a
+    # byte-exact checksum for this URL, so fetch it back and prove the promise first.
+    - name: Verify the published archive
+      if: steps.gate.outputs.release == 'true'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        rm -rf published && mkdir -p published
+        gh release download "$VERSION" --dir published --clobber
+
+        for local in artifacts/*.zip; do
+          name=$(basename "$local")
+          if [ ! -f "published/${name}" ]; then
+            echo "::error::${name} is missing from release ${VERSION}"
+            exit 1
+          fi
+          if ! cmp -s "$local" "published/${name}"; then
+            echo "::error::${name} on release ${VERSION} differs from the archive that was built"
+            exit 1
+          fi
+          echo "verified ${name}"
+        done
+
+    - name: Update the plugin catalogue
+      if: steps.gate.outputs.release == 'true'
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        REPO="${{ github.repository }}"
+        ZIP_NAME="SSO_Authentication_${VERSION}.zip"
+
+        # Checksum and ABI are both taken from the archive as the release serves it,
+        # not from the local build output: the catalogue's checksum then describes the
+        # exact bytes behind the URL it publishes, and the ABI cannot disagree with
+        # what the plugin itself declares.
+        checksum=$(md5sum "published/${ZIP_NAME}" | awk '{print $1}')
+        abi=$(unzip -p "published/${ZIP_NAME}" '*/meta.json' | jq -r .targetAbi)
+        echo "${ZIP_NAME}: targetAbi ${abi}, md5 ${checksum}"
+
+        jq --arg version "$VERSION" \
+           --rawfile changelog CHANGELOG.md \
+           --arg checksum "$checksum" \
+           --arg timestamp "$TIMESTAMP" \
+           --arg abi "$abi" \
+           --arg url "https://github.com/${REPO}/releases/download/${VERSION}/${ZIP_NAME}" \
+           --arg imageUrl "https://raw.githubusercontent.com/${REPO}/main/icon.png" \
+           '[.[0] + {
+             "imageUrl": $imageUrl,
+             "versions": ([{
+               "version": $version,
+               "changelog": $changelog,
+               "targetAbi": $abi,
+               "sourceUrl": $url,
+               "checksum": $checksum,
+               "timestamp": $timestamp
+             }] + .[0].versions)
+           }]' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+
+        # The catalogue is what operators' servers read. Assert the entry it now
+        # advertises rather than assuming the jq above did what it reads like.
+        got=$(jq -r '.[0].versions[0].targetAbi' manifest.json)
+        want=$(grep -oP '(?<=<JellyfinTargetAbi>)[^<]+' Directory.Build.props | head -1)
+        if [ "$got" != "$want" ]; then
+          echo "::error::manifest.json now advertises targetAbi ${got}, expected ${want}"
+          exit 1
+        fi
+
+    # Pushed with GITHUB_TOKEN, which does not retrigger workflows, so this commit
+    # cannot start another release run.
+    - name: Commit updated manifest
+      if: steps.gate.outputs.release == 'true'
+      run: |
+        git config user.name "voc0der"
+        git config user.email "contact@netspace.in"
+        git add manifest.json
+        git commit -m "Update manifest.json for version ${{ steps.version.outputs.version }} [skip ci]" || echo "No changes to commit"
+
+        # A swallowed push failure leaves a release that the catalogue never learns
+        # about. Rebase onto whatever landed meanwhile and retry; if it still will not
+        # go, fail the job rather than report success.
+        for attempt in 1 2 3; do
+          if git push; then
+            exit 0
+          fi
+          echo "push rejected (attempt $attempt), rebasing onto origin/main"
+          git fetch origin main
+          git rebase origin/main || exit 1
+        done
+
+        echo "::error::Could not push the manifest update after 3 attempts"
+        exit 1
+
+    - name: Rebuild centralized plugin repository
+      if: steps.gate.outputs.release == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+      run: |
+        gh api \
+          --method POST \
+          repos/voc0der/jellyfin-plugins/dispatches \
+          -f event_type='plugin-updated'
