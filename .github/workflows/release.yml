@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          global-json-file: global.json
+      - run: dotnet restore --locked-mode
+      - run: python3 scripts/plugin.py validate
+      - run: python3 -m unittest discover -s tests/tooling -v
+      - run: dotnet build --configuration Release --no-restore --warnaserror
+      - run: dotnet publish SSO-Auth/SSO-Auth.csproj --configuration Release --no-restore --output artifacts/publish
+      - name: Package build
+        run: |
+          version=$(python3 -c 'from scripts.plugin import build_metadata; print(build_metadata()["version"])')
+          python3 scripts/plugin.py package --version "$version" --build-tag "$GITHUB_SHA" --output artifacts/SSO_Authentication_build.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: SSO-Authentication
+          path: artifacts/*.zip*
+          if-no-files-found: error
+          retention-days: 14
+
+  gate:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.label.outputs.release }}
+    steps:
+      - name: Check merged PR release label
+        id: label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=false
+          for delay in 0 5 10 20; do
+            sleep "$delay"
+            prs=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")
+            if jq -e --arg sha "$GITHUB_SHA" 'any(.[]; .merged_at != null and .merge_commit_sha == $sha and .base.ref == "main" and any(.labels[]; .name == "release"))' <<< "$prs" > /dev/null; then
+              release=true
+              break
+            fi
+            if [ "$(jq length <<< "$prs")" -gt 0 ]; then break; fi
+          done
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: [build, gate]
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: sso-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          global-json-file: global.json
+      - name: Require checks on the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/wait-for-checks.py
+      - run: dotnet restore --locked-mode
+      - name: Publish versioned release and manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/release.sh
+      - name: Rebuild centralized plugin repository
+        env:
+          GH_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: gh api --method POST repos/voc0der/jellyfin-plugins/dispatches -f event_type=plugin-updated

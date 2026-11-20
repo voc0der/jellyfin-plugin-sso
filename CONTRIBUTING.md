@@ -1,181 +1,86 @@
-<!-- omit in toc -->
-
-# Contributing to Jellyfin SSO Plugin
-
-First off, thanks for taking the time to contribute! ❤️
-
-All types of contributions are encouraged and valued. See the [Table of Contents](#table-of-contents) for different ways to help and details about how this project handles them. Please make sure to read the relevant section before making your contribution. It will make it a lot easier for us maintainers and smooth out the experience for all involved. The community looks forward to your contributions. 🎉
-
-> And if you like the project, but just don't have time to contribute, that's fine. There are other easy ways to support the project and show your appreciation, which we would also be very happy about:
->
-> - Star the project
-> - Tweet about it
-> - Refer this project in your project's readme
-> - Mention the project at local meetups and tell your friends/colleagues
-
-<!-- omit in toc -->
-
-## Table of Contents
-
-- [I Have a Question](#i-have-a-question)
-- [I Want To Contribute](#i-want-to-contribute)
-  - [Reporting Bugs](#reporting-bugs)
-  - [Suggesting Enhancements](#suggesting-enhancements)
-  - [Your First Code Contribution](#your-first-code-contribution)
-  - [Improving The Documentation](#improving-the-documentation)
-- [Styleguides](#styleguides)
-  - [Commit Messages](#commit-messages)
-- [Join The Project Team](#join-the-project-team)
-
-## I Have a Question
-
-> If you want to ask a question, we assume that you have read the available [Documentation](https://github.com/9p4/jellyfin-plugin-sso/blob/main/README.md).
-
-Before you ask a question, it is best to search for existing [Issues](https://github.com/9p4/jellyfin-plugin-sso/issues) that might help you. In case you have found a suitable issue and still need clarification, you can write your question in this issue. It is also advisable to search the internet for answers first.
-
-If you then still feel the need to ask a question and need clarification, we recommend the following:
-
-- Open an [Issue](https://github.com/9p4/jellyfin-plugin-sso/issues/new).
-- Provide as much context as you can about what you're running into.
-- Provide project and platform versions (nodejs, npm, etc), depending on what seems relevant.
-
-We will then take care of the issue as soon as possible.
-
-<!--
-You might want to create a separate issue tag for questions and include it in this description. People should then tag their issues accordingly.
-
-Depending on how large the project is, you may want to outsource the questioning, e.g. to Stack Overflow or Gitter. You may add additional contact and information possibilities:
-- IRC
-- Slack
-- Gitter
-- Stack Overflow tag
-- Blog
-- FAQ
-- Roadmap
-- E-Mail List
-- Forum
--->
-
-## I Want To Contribute
-
-> ### Legal Notice <!-- omit in toc -->
->
-> When contributing to this project, you must agree that you have authored 100% of the content, that you have the necessary rights to the content and that the content you contribute may be provided under the project license.
-
-### Reporting Bugs
-
-<!-- omit in toc -->
-
-#### Before Submitting a Bug Report
-
-A good bug report shouldn't leave others needing to chase you up for more information. Therefore, we ask you to investigate carefully, collect information and describe the issue in detail in your report. Please complete the following steps in advance to help us fix any potential bug as fast as possible.
-
-- Make sure that you are using the latest version.
-- Determine if your bug is really a bug and not an error on your side e.g. using incompatible environment components/versions (Make sure that you have read the [documentation](https://github.com/9p4/jellyfin-plugin-sso/blob/main/README.md). If you are looking for support, you might want to check [this section](#i-have-a-question)).
-- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there is not already a bug report existing for your bug or error in the [bug tracker](https://github.com/9p4/jellyfin-plugin-ssoissues?q=label%3Abug).
-- Also make sure to search the internet (including Stack Overflow) to see if users outside of the GitHub community have discussed the issue.
-- Collect information about the bug:
-  - Stack trace (Traceback)
-  - OS, Platform and Version (Windows, Linux, macOS, x86, ARM)
-  - Version of the interpreter, compiler, SDK, runtime environment, package manager, depending on what seems relevant.
-  - Possibly your input and the output
-  - Can you reliably reproduce the issue? And can you also reproduce it with older versions?
-
-<!-- omit in toc -->
-
-#### How Do I Submit a Good Bug Report?
-
-> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead sensitive bugs must be sent by email to <contact@ersei.net>.
-
-<!-- You may add a PGP key to allow the messages to be sent encrypted as well. -->
-
-We use GitHub issues to track bugs and errors. If you run into an issue with the project:
-
-- Open an [Issue](https://github.com/9p4/jellyfin-plugin-sso/issues/new). (Since we can't be sure at this point whether it is a bug or not, we ask you not to talk about a bug yet and not to label the issue.)
-- Explain the behavior you would expect and the actual behavior.
-- Please provide as much context as possible and describe the _reproduction steps_ that someone else can follow to recreate the issue on their own. This usually includes your code. For good bug reports you should isolate the problem and create a reduced test case.
-- Provide the information you collected in the previous section.
-
-Once it's filed:
-
-- The project team will label the issue accordingly.
-- A team member will try to reproduce the issue with your provided steps. If there are no reproduction steps or no obvious way to reproduce the issue, the team will ask you for those steps and mark the issue as `needs-repro`. Bugs with the `needs-repro` tag will not be addressed until they are reproduced.
-- If the team is able to reproduce the issue, it will be marked `needs-fix`, as well as possibly other tags (such as `critical`), and the issue will be left to be [implemented by someone](#your-first-code-contribution).
-
-<!-- You might want to create an issue template for bugs and errors that can be used as a guide and that defines the structure of the information to be included. If you do so, reference it here in the description. -->
-
-### Suggesting Enhancements
-
-This section guides you through submitting an enhancement suggestion for Jellyfin SSO Plugin, **including completely new features and minor improvements to existing functionality**. Following these guidelines will help maintainers and the community to understand your suggestion and find related suggestions.
-
-<!-- omit in toc -->
-
-#### Before Submitting an Enhancement
-
-- Make sure that you are using the latest version.
-- Read the [documentation](https://github.com/9p4/jellyfin-plugin-sso/blob/main/README.md) carefully and find out if the functionality is already covered, maybe by an individual configuration.
-- Perform a [search](https://github.com/9p4/jellyfin-plugin-sso/issues) to see if the enhancement has already been suggested. If it has, add a comment to the existing issue instead of opening a new one.
-- Find out whether your idea fits with the scope and aims of the project. It's up to you to make a strong case to convince the project's developers of the merits of this feature. Keep in mind that we want features that will be useful to the majority of our users and not just a small subset. If you're just targeting a minority of users, consider writing an add-on/plugin library.
-
-<!-- omit in toc -->
-
-#### How Do I Submit a Good Enhancement Suggestion?
-
-Enhancement suggestions are tracked as [GitHub issues](https://github.com/9p4/jellyfin-plugin-sso/issues).
-
-- Use a **clear and descriptive title** for the issue to identify the suggestion.
-- Provide a **step-by-step description of the suggested enhancement** in as many details as possible.
-- **Describe the current behavior** and **explain which behavior you expected to see instead** and why. At this point you can also tell which alternatives do not work for you.
-- You may want to **include screenshots and animated GIFs** which help you demonstrate the steps or point out the part which the suggestion is related to. You can use [this tool](https://www.cockos.com/licecap/) to record GIFs on macOS and Windows, and [this tool](https://github.com/colinkeenan/silentcast) or [this tool](https://github.com/GNOME/byzanz) on Linux. <!-- this should only be included if the project has a GUI -->
-- **Explain why this enhancement would be useful** to most Jellyfin SSO Plugin users. You may also want to point out the other projects that solved it better and which could serve as inspiration.
-
-<!-- You might want to create an issue template for enhancement suggestions that can be used as a guide and that defines the structure of the information to be included. If you do so, reference it here in the description. -->
-
-### Your First Code Contribution
-
-<!-- TODO
-include Setup of env, IDE and typical getting started instructions?
-
--->
-
-The project is built with .NET 6. Download it from [here](https://dotnet.microsoft.com/en-us/download).
-
-Any code editor or IDE with .NET support will work out of the box with this program.
-
-(Some) editors:
-
-- [VSCode](https://code.visualstudio.com/docs/languages/dotnet)
-- [N/Vim](https://github.com/OmniSharp/Omnisharp-vim)
-
-### Improving The Documentation
-
-<!-- TODO
-Updating, improving and correcting the documentation
-
--->
-
-We are always open to better docs! The main place documentation could be improved is the [providers](https://github.com/9p4/jellyfin-plugin-sso/blob/main/providers.md) documentation. This file keeps track of configurations that are known to work with common SSO providers.
-
-## Styleguides
-
-### Commit Messages
-
-We use [commitlint](https://commitlint.js.org) for linting commit messages.
-
-### C#
-
-We format all C# code according to the .NET formatter. Run `dotnet build .` and fix any warnings that come up.
-
-### HTML/CSS/JS/Markdown
-
-We use [Prettier](https://prettier.io) to format these files.
-
-<!-- TODO
-
--->
-
-<!-- omit in toc -->
-
-## Attribution
-
-This guide is based on the **contributing-gen**. [Make your own](https://github.com/bttger/contributing-gen)!
+# Contributing
+
+This fork starts from [9p4/jellyfin-plugin-sso](https://github.com/9p4/jellyfin-plugin-sso)
+at commit `f1e157bac29e6d27a0844378f3e1d4a4fdaa577a`. The upstream history and GPL-3.0
+license are retained. Open issues and pull requests in **voc0der/jellyfin-plugin-sso**.
+Report security issues using [SECURITY.md](SECURITY.md).
+
+## Build and validate
+
+Install the .NET SDK selected by `global.json`, Node.js 24 or newer, and Python 3.
+The plugin targets Jellyfin 10.11 and .NET 9; the build SDK is .NET 10.
+
+```sh
+dotnet restore --locked-mode
+dotnet build --configuration Release --no-restore --warnaserror
+dotnet format whitespace --verify-no-changes --no-restore
+dotnet format style --verify-no-changes --no-restore --severity warn
+python3 scripts/plugin.py validate
+python3 -m unittest discover -s tests/tooling -v
+npm ci --ignore-scripts
+npm run format:check
+npx playwright install --with-deps chromium
+npm test
+```
+
+After intentionally changing NuGet versions, run `dotnet restore --force-evaluate`
+and commit the updated `packages.lock.json` files. `npm install --package-lock-only`
+refreshes the npm lockfile. Run `npx prettier --write .` to format web assets and docs.
+
+The browser harness exercises the actual settings page with a stubbed Jellyfin API.
+It covers loading, saving, and deleting providers without real secrets. It does not
+exercise authentication against a live identity provider. The Python tests cover
+release gates, metadata, runtime packaging, and manifest generation.
+
+## Packaging
+
+```sh
+dotnet publish SSO-Auth/SSO-Auth.csproj --configuration Release --no-restore --output artifacts/publish
+python3 scripts/plugin.py package --version 4.0.0.4 --output artifacts/SSO_Authentication_local.zip
+```
+
+The ZIP contains a versioned plugin directory, the GPL license, the plugin's F# helper,
+FSharp.Core, and the Duende libraries. Jellyfin's own assemblies and the ASP.NET Core
+shared framework are supplied by the server and must not be bundled. Archives have
+MD5 checksums for Jellyfin's catalogue and SHA-256 checksums for manual verification.
+
+## Automation and releases
+
+- **Build and Release** builds changes and uploads an installable artifact. Only a
+  merged PR carrying the `release` label can publish. Direct pushes and manual builds
+  do not release.
+- **Lint** checks .NET formatting, Prettier, metadata, and release tooling tests.
+- **Settings page** runs the Chromium smoke test.
+- **CodeQL** scans C#, JavaScript, and Actions using security and quality queries.
+- **Dependency Review** checks PR dependency changes and audits NuGet/npm weekly.
+- **PR Develop Build** publishes downloadable PR artifacts automatically; it also
+  accepts a PR number through workflow dispatch. It has no write permission or secrets.
+- **Renovate** runs hourly, on main pushes, and when PR checks finish. Non-major
+  updates wait three days and merge after checks pass. Major updates and Jellyfin
+  packages require approval in the Dependency Dashboard.
+
+Releases wait for all required checks on the exact main commit. The next four-part
+version is allocated from the fork's manifest, starting at `4.0.0.5`; upstream's
+`nightly` tag cannot affect numbering. The workflow builds versioned assemblies,
+uploads assets, publishes the release, updates `manifest.json`, and sends a
+`plugin-updated` dispatch to `voc0der/jellyfin-plugins`. It serializes publishing
+and rebases only the manifest update when main advances. If publishing stops after
+creating a release, reconcile that release and manifest before running another release.
+
+Repository configuration:
+
+| Name                       | Kind             | Purpose                                           |
+| -------------------------- | ---------------- | ------------------------------------------------- |
+| `RENOVATE_APP_CLIENT_ID`   | Actions variable | Renovate GitHub App client ID                     |
+| `RENOVATE_APP_PRIVATE_KEY` | Actions secret   | Renovate GitHub App private key                   |
+| `PLUGIN_REPO_TOKEN`        | Actions secret   | Dispatch access to the combined plugin repository |
+| `icon.png`                 | Root asset       | Plugin catalogue and README icon                  |
+
+The default Actions token has read permission. Only release publication and CodeQL
+uploads receive write permissions. Actions are pinned to commit hashes and updated
+by Renovate. The Renovate workflow never checks out pull request code.
+
+The original plugin GUID is retained for replacement compatibility. Do not install
+both forks together or subscribe to competing catalogues for that GUID. Do not bump
+the Jellyfin ABI, change that identity, or publish compatibility claims without
+validating against the intended server.

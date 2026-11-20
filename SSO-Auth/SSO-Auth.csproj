@@ -5,6 +5,7 @@
     <RootNamespace>Jellyfin.Plugin.SSO_Auth</RootNamespace>
     <AssemblyVersion>4.0.0.4</AssemblyVersion>
     <FileVersion>4.0.0.4</FileVersion>
+    <Version>4.0.0.4</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
@@ -33,7 +34,6 @@
     <PackageReference Include="Jellyfin.Controller" Version="10.11.0" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="6.0.1" />
   </ItemGroup>
 
   <ItemGroup>

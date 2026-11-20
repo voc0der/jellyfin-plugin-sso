@@ -24,7 +24,10 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Configuration**
-Add your plugin configuration XML file here formatted as code (with three backticks surrounding the text), or as an upload to a pastebin service.
+Include only the relevant, redacted configuration. Remove client secrets, API keys,
+access and refresh tokens, private keys, and personal data. Never upload the full
+plugin configuration. Report suspected vulnerabilities privately through
+https://github.com/voc0der/jellyfin-plugin-sso/security/advisories/new.
 
 **Versions (please complete the following information):**
 

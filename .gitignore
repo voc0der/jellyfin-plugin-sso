@@ -449,3 +449,10 @@ $RECYCLE.BIN/
 ##
 .vscode/*
 .vscode
+
+# Local tooling and release output
+artifacts/
+node_modules/
+__pycache__/
+playwright-report/
+test-results/

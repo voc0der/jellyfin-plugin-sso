@@ -1,0 +1,12 @@
+{
+  "name": "jellyfin-plugin-sso-tooling",
+  "private": true,
+  "scripts": {
+    "format:check": "prettier --check .",
+    "test": "node --test tests/config-page/*.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.65.1",
+    "prettier": "3.10.1"
+  }
+}

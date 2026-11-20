@@ -1,0 +1,38 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: dotnet restore --locked-mode
+      - run: dotnet format whitespace --verify-no-changes --no-restore --verbosity minimal
+      - run: dotnet format style --verify-no-changes --no-restore --severity warn --verbosity minimal
+      - run: npm ci --ignore-scripts
+      - run: npm run format:check
+      - run: python3 scripts/plugin.py validate
+      - run: python3 -m unittest discover -s tests/tooling -v
