@@ -309,6 +309,44 @@ public sealed class SamlFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Completing_a_sign_in_still_requires_an_allowed_role()
+    {
+        // The page calls this with the response the provider posted, but nothing stops a
+        // browser calling it directly with its own signed response, so it checks roles too.
+        AccountsCreatedOnSignIn();
+
+        var result = await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("mallory", "visitors")));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, Assert.IsType<ContentResult>(result).StatusCode);
+        await _harness.Users.DidNotReceive().CreateUserAsync(Arg.Any<string>());
+        Assert.Empty(_sessionRequests);
+        Assert.Empty(Config.CanonicalLinks);
+    }
+
+    [Fact]
+    public async Task Completing_a_sign_in_needs_no_role_when_none_are_required()
+    {
+        Config.Roles = Array.Empty<string>();
+        var created = AccountsCreatedOnSignIn();
+
+        var result = await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("anyone")));
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("anyone", Assert.Single(created).Username);
+    }
+
+    [Fact]
+    public void Leaving_roles_unset_means_no_role_is_required()
+    {
+        // A provider added through the API without Roles has none, rather than an empty list.
+        Config.Roles = null!;
+
+        var result = Assert.IsType<ContentResult>(PostedBack(SignedResponse("anyone")).SamlPost("test"));
+
+        Assert.Equal("text/html", result.ContentType);
+    }
+
+    [Fact]
     public async Task An_existing_account_with_the_same_name_is_taken_over_as_documented()
     {
         // The README warns about this: an SSO name matching a Jellyfin username signs in as

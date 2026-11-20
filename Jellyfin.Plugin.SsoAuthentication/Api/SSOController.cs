@@ -587,27 +587,7 @@ public class SSOController : ControllerBase
                 return Problem("Invalid SAML signature");
             }
 
-            bool valid = false;
-
-            // If no roles are configured, don't use RBAC
-            if (config.Roles.Length == 0)
-            {
-                valid = true;
-            }
-
-            // Check if user is allowed to log in based on roles
-            foreach (string role in samlResponse.GetCustomAttributes("Role"))
-            {
-                foreach (string allowedRole in config.Roles)
-                {
-                    if (allowedRole.Equals(role))
-                    {
-                        valid = true;
-                    }
-                }
-            }
-
-            if (valid)
+            if (SamlRolesAllow(config, samlResponse))
             {
                 return Content(
                         WebResponse.Generator(
@@ -749,6 +729,18 @@ public class SSOController : ControllerBase
             if (!samlResponse.IsValid())
             {
                 return Problem("Invalid SAML signature");
+            }
+
+            // SamlPost already turned away anyone without an allowed role, but this endpoint
+            // takes the response from the browser, which can send it here directly.
+            if (!SamlRolesAllow(config, samlResponse))
+            {
+                _logger.LogWarning(
+                    "SAML user: {UserId} has insufficient roles: {@Roles}. Expected any one of: {@ExpectedRoles}",
+                    samlResponse.GetNameID(),
+                    samlResponse.GetCustomAttributes("Role"),
+                    config.Roles);
+                return ReturnError(StatusCodes.Status401Unauthorized, "Error. Check permissions.");
             }
 
             List<string> folders;
@@ -1347,6 +1339,20 @@ public class SSOController : ControllerBase
             Port = requestPort,
             Path = Request.PathBase
         }.ToString().TrimEnd('/');
+    }
+
+    /// <summary>
+    /// Whether a SAML response's Role attributes let its user sign in: any one of the
+    /// provider's roles will do, and a provider with no roles set lets everyone in.
+    /// </summary>
+    private static bool SamlRolesAllow(SamlConfig config, Response samlResponse)
+    {
+        if (config.Roles == null || config.Roles.Length == 0)
+        {
+            return true;
+        }
+
+        return samlResponse.GetCustomAttributes("Role").Any(role => config.Roles.Contains(role));
     }
 
     private ContentResult ReturnError(int code, string message)
