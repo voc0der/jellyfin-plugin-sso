@@ -172,6 +172,9 @@ a server before it merges.
 - Releases are tagged `1.0.0.1` and so on. Each bumps the revision of the latest release tag, or of
   the version in `Directory.Build.props` if that is newer; raise it there to start a new line.
 
+This repository only runs actions pinned to a full commit SHA, so workflows reference them as
+`owner/action@<sha> # <version>`; Renovate keeps the pins current.
+
 The workflows need `PLUGIN_REPO_TOKEN` (a secret that can dispatch to the combined catalogue) and
 the Renovate GitHub App's `RENOVATE_APP_CLIENT_ID` (a variable) and `RENOVATE_APP_PRIVATE_KEY` (a
 secret).
