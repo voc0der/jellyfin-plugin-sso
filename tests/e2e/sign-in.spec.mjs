@@ -10,7 +10,7 @@ import {
     signInWithSso,
     stack
 } from './harness/session.mjs';
-import { EXPOSED_USER, JELLYFIN_URL, LOCAL_USER, PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
+import { EXPOSED_USER, JELLYFIN_URL, LOCAL_USER, PICTURE_PATH, PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
 
 // Accounts carry this as their authentication provider when sign-in created them: it keeps
 // them from signing in with a password.
@@ -64,6 +64,27 @@ test('signing in again uses the same account', async ({ page }) => {
 
     expect(await currentUserId(page)).toBe(alice.Id);
     expect((await admin('GET', '/Users')).length).toBe(before.length);
+});
+
+test('the picture Authelia gives becomes the profile picture, and each sign-in replaces it', async ({ page }) => {
+    // Alice has signed in above, with the picture her Authelia account carries.
+    const { base } = stack();
+    const before = await jellyfinUser('alice');
+    expect(before.PrimaryImageTag).toBeTruthy();
+
+    // Served as it was stored. Saved without its extension, as 9p4's plugin named pictures,
+    // Jellyfin cannot tell what it is and serves it as application/octet-stream.
+    const served = await fetch(`${base}/Users/${before.Id}/Images/Primary`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/png');
+    const source = await fetch(`${base}${PICTURE_PATH}`);
+    expect(Buffer.from(await served.arrayBuffer()).equals(Buffer.from(await source.arrayBuffer()))).toBe(true);
+
+    await signInWithSso(page, 'alice');
+
+    const after = await jellyfinUser('alice');
+    expect(after.PrimaryImageTag).toBeTruthy();
+    expect(after.PrimaryImageTag).not.toBe(before.PrimaryImageTag);
 });
 
 test('a member of the admins group signs in as an administrator', async ({ page }) => {

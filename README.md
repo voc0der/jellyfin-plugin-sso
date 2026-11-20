@@ -188,7 +188,7 @@ curl -H 'Authorization: MediaBrowser Token="API_KEY"' "https://jellyfin.example.
   - `roleClaim`: string. The claim the roles are in, for example `groups`, or `realm_access.roles` for Keycloak. Each `.` steps into the claim's JSON; write `\.` for a literal dot. The claim must hold a list of strings.
   - `oidScopes`: array of strings. Scopes to request besides `openid profile`. Some providers send groups only for a `groups` scope.
   - `defaultUsernameClaim`: string. The claim usernames come from; `preferred_username` when unset.
-  - `avatarUrlFormat`: string. An address for the account's picture, with `@{claim}` replaced by that claim's value. Unset, pictures are left alone.
+  - `avatarUrlFormat`: string. An address for the account's picture, with `@{claim}` replaced by that claim's value. The server fetches it at each sign-in; one that cannot be fetched, or is not an image, leaves the old picture. Unset, pictures are left alone.
   - `defaultProvider`: string. An authentication provider to hand the account to after sign-in, so it can also sign in another way, such as `Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider` for a password.
   - `disableHttps`: boolean. Allows a provider without HTTPS. Avoid it: the plugin trusts the provider's tokens because they arrive over TLS.
   - `disablePushedAuthorization`: boolean. Required for Authelia; see [providers.md](providers.md#authelia).

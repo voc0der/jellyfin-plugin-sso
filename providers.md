@@ -102,7 +102,12 @@ authelia:
   RoleClaim: groups
   OidScopes: ["groups"]
   DisablePushedAuthorization: true
+  AvatarUrlFormat: "@{picture}" # (optional) the account's picture in Authelia
 ```
+
+With `AvatarUrlFormat`, each sign-in makes the `picture` set on the Authelia account (4.39 and
+above) the profile picture. Jellyfin fetches it itself, so the address has to be reachable from
+the Jellyfin server. A picture that cannot be fetched leaves the old one.
 
 `DisablePushedAuthorization` is required with Authelia: the plugin authenticates a pushed
 authorization request with HTTP Basic but its token request with `client_secret_post`, and

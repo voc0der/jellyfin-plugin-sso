@@ -46,6 +46,11 @@ export const IDP_USERS = {
 };
 export const idpPassword = name => `${name}-harness-pw`;
 
+// The picture every Authelia account carries in its picture claim. Jellyfin Web ships it, so
+// the plugin can fetch it from inside Jellyfin's container with no server of its own.
+export const PICTURE_PATH = '/web/assets/img/avatar.png';
+const PICTURE_URL = `http://localhost:8096${PICTURE_PATH}`;
+
 // A Jellyfin account made with a password, for linking an Authelia identity to.
 export const LOCAL_USER = { name: 'erin', password: 'erin-harness-pw' };
 
@@ -158,6 +163,7 @@ function autheliaUsers() {
             `    displayname: '${user.displayname}'`,
             `    password: '${autheliaHash(idpPassword(name))}'`,
             `    email: '${name}@${DOMAIN}'`,
+            `    picture: '${PICTURE_URL}'`,
             '    groups:',
             ...user.groups.map(group => `      - '${group}'`));
     }
@@ -377,6 +383,7 @@ export function providerConfiguration(overrides = {}) {
         RoleClaim: 'groups',
         OidScopes: ['groups'],
         DefaultUsernameClaim: 'preferred_username',
+        AvatarUrlFormat: '@{picture}',
         DisablePushedAuthorization: true,
         SchemeOverride: 'https',
         // Saved by every sign-in started at /sso/OID/start/, and what 4.0.x settings files

@@ -22,6 +22,7 @@ using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Cryptography;
+using MediaBrowser.Model.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -1137,52 +1138,7 @@ public class SSOController : ControllerBase
 
         if (avatarUrl is not null)
         {
-            try
-            {
-                using var client = _httpClientFactory.CreateClient();
-
-                System.Reflection.Assembly assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                System.Diagnostics.FileVersionInfo fvi = System.Diagnostics.FileVersionInfo.GetVersionInfo(assembly.Location);
-                string version = fvi.FileVersion;
-                client.DefaultRequestHeaders.UserAgent.ParseAdd($"Jellyfin-Plugin-SsoAuthentication/{version} (+https://github.com/voc0der/jellyfin-plugin-sso)");
-
-                var avatarResponse = await client.GetAsync(avatarUrl);
-
-                if (!avatarResponse.Content.Headers.TryGetValues("content-type", out var contentTypeList))
-                {
-                    throw new Exception("Cannot get Content-Type of image : " + avatarUrl);
-                }
-
-                var contentType = contentTypeList.First();
-                if (!contentType.StartsWith("image"))
-                {
-                    throw new Exception("Content type of avatar URL is not an image, got :  " + contentType);
-                }
-
-                var extension = contentType.Split("/").Last();
-                var stream = await avatarResponse.Content.ReadAsStreamAsync();
-
-                if (user != null)
-                {
-                    var userDataPath =
-                        Path.Combine(
-                            _serverConfigurationManager.ApplicationPaths.UserConfigurationDirectoryPath,
-                            user.Username);
-                    if (user.ProfileImage is not null)
-                    {
-                        await _userManager.ClearProfileImageAsync(user).ConfigureAwait(false);
-                    }
-
-                    user.ProfileImage = new ImageInfo(Path.Combine(userDataPath, "profile" + extension));
-
-                    await _providerManager.SaveImage(stream, contentType, user.ProfileImage.Path)
-                        .ConfigureAwait(false);
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e.Message);
-            }
+            await SetProfilePicture(user, avatarUrl).ConfigureAwait(false);
         }
 
         user.SetPermission(PermissionKind.EnableLiveTvAccess, enableLiveTv);
@@ -1206,6 +1162,61 @@ public class SSOController : ControllerBase
         }
 
         return await _sessionManager.AuthenticateDirect(authRequest).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replaces the account's profile picture with the image at the address the provider's claims
+    /// give. A picture that cannot be fetched or saved leaves the old one, and sign-in goes on.
+    /// </summary>
+    private async Task SetProfilePicture(User user, string avatarUrl)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient();
+
+            System.Reflection.Assembly assembly = System.Reflection.Assembly.GetExecutingAssembly();
+            System.Diagnostics.FileVersionInfo fvi = System.Diagnostics.FileVersionInfo.GetVersionInfo(assembly.Location);
+            string version = fvi.FileVersion;
+            client.DefaultRequestHeaders.UserAgent.ParseAdd($"Jellyfin-Plugin-SsoAuthentication/{version} (+https://github.com/voc0der/jellyfin-plugin-sso)");
+
+            // GetAsync reads the whole picture before it returns, so a download that breaks off
+            // fails here, before anything has changed.
+            using var avatarResponse = await client.GetAsync(avatarUrl).ConfigureAwait(false);
+
+            // Accepted as Jellyfin accepts an uploaded picture, and named the same way, profile.png
+            // and so on: the extension is how it later knows what it is serving.
+            var contentType = avatarResponse.Content.Headers.ContentType?.MediaType;
+            var extension = contentType is not null && MimeTypes.IsImage(contentType) ? MimeTypes.ToExtension(contentType) : null;
+            if (!avatarResponse.IsSuccessStatusCode || extension is null)
+            {
+                _logger.LogWarning(
+                    "The profile picture for {Username} came back as {StatusCode} {ContentType}, not as an image; keeping the old one",
+                    user.Username,
+                    (int)avatarResponse.StatusCode,
+                    contentType);
+                return;
+            }
+
+            // Join, not Combine: Combine drops the folder if a later part is a rooted path.
+            var path = Path.Join(_serverConfigurationManager.ApplicationPaths.UserConfigurationDirectoryPath, user.Username, "profile" + extension);
+            var stream = await avatarResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
+
+            // The file first and the account after, so a picture the disk refuses leaves the account
+            // with the one it had. Clearing the old picture forgets it, and leaves its file alone.
+            await _providerManager.SaveImage(stream, contentType, path).ConfigureAwait(false);
+            if (user.ProfileImage is not null)
+            {
+                await _userManager.ClearProfileImageAsync(user).ConfigureAwait(false);
+            }
+
+            user.ProfileImage = new ImageInfo(path);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // Deliberately broad: the fetch, the database and the disk can each fail in their own
+            // ways, and none of them is a reason to turn someone away. Only a fatal error goes on.
+            _logger.LogError(e, "Could not set the profile picture of {Username}", user.Username);
+        }
     }
 
     private void Invalidate()
