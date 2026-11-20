@@ -43,6 +43,20 @@ export async function signInWithPassword(page, user) {
 
 export const signInAsAdmin = page => signInWithPassword(page, ADMIN);
 
+// The status Jellyfin answers a sign-in with this name and an empty password, as anyone on its
+// login page could try: 200 means the account is open.
+export async function emptyPasswordSignIn(name) {
+    const response = await fetch(`${stack().base}/Users/AuthenticateByName`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'MediaBrowser Client="SSO harness", Device="harness", DeviceId="sso-e2e-empty-password", Version="1.0.0"'
+        },
+        body: JSON.stringify({ Username: name, Pw: '' })
+    });
+    return response.status;
+}
+
 // Who Jellyfin Web thinks is signed in, or null until it knows.
 export function currentUserId(page) {
     return page.evaluate(() => window.ApiClient?.getCurrentUserId?.() ?? null);

@@ -38,6 +38,11 @@ namespace Jellyfin.Plugin.SsoAuthentication.Api;
 [Route("[controller]")]
 public class SSOController : ControllerBase
 {
+    /// <summary>
+    /// Jellyfin's own username and password provider.
+    /// </summary>
+    private const string JellyfinPasswordProvider = "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider";
+
     private readonly IUserManager _userManager;
     private readonly ISessionManager _sessionManager;
     private readonly IAuthorizationContext _authContext;
@@ -898,14 +903,21 @@ public class SSOController : ControllerBase
         {
             _logger.LogInformation($"SSO user {canonicalName} doesn't exist, creating...");
             user = await _userManager.CreateUserAsync(canonicalName).ConfigureAwait(false);
-            user.AuthenticationProviderId = GetType().FullName;
-            // https://jonathancrozier.com/blog/how-to-generate-a-cryptographically-secure-random-string-in-dot-net-with-c-sharp
-            user.Password = _cryptoProvider.CreatePasswordHash(Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))).ToString();
+            await LockToSso(user).ConfigureAwait(false);
 
             // Make sure there aren't any trailing existing links
             var links = GetCanonicalLinks(mode, provider);
             links.Remove(canonicalName);
             UpdateCanonicalLinkConfig(links, mode, provider);
+        }
+        else if (AcceptsEmptyPassword(user))
+        {
+            // 9p4's plugin left the accounts it made on Jellyfin 12 like this, as could an
+            // administrator. Whoever is signing in has just proved who they are to the provider.
+            _logger.LogWarning(
+                "Account {Username} could be signed in to with an empty password; it now signs in through SSO only. Give it a password in the dashboard if it should also sign in with one",
+                user.Username);
+            await LockToSso(user).ConfigureAwait(false);
         }
 
         userId = Guid.Empty;
@@ -926,6 +938,32 @@ public class SSOController : ControllerBase
         }
 
         return userId;
+    }
+
+    /// <summary>
+    /// Whether Jellyfin would let anyone sign in to the account with an empty password: its own
+    /// password provider accepts one for an account that has no password.
+    /// </summary>
+    private static bool AcceptsEmptyPassword(User user)
+    {
+        return string.IsNullOrEmpty(user.Password)
+            && (string.IsNullOrEmpty(user.AuthenticationProviderId) || user.AuthenticationProviderId == JellyfinPasswordProvider);
+    }
+
+    /// <summary>
+    /// Gives the account a password nobody knows and an authentication provider Jellyfin cannot
+    /// sign in with, so it can only be used through SSO, and saves it.
+    /// </summary>
+    private async Task LockToSso(User user)
+    {
+        user.AuthenticationProviderId = GetType().FullName;
+        // https://jonathancrozier.com/blog/how-to-generate-a-cryptographically-secure-random-string-in-dot-net-with-c-sharp
+        user.Password = _cryptoProvider.CreatePasswordHash(Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))).ToString();
+
+        // Saved now: Jellyfin 12 hands back a fresh copy when the account is next looked up, so
+        // changes left unsaved on this instance would be lost, and the account would keep the
+        // default provider with no password, which Jellyfin accepts an empty password for.
+        await _userManager.UpdateUserAsync(user).ConfigureAwait(false);
     }
 
     private Guid GetCanonicalLink(string mode, string provider, string canonicalName)

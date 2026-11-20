@@ -81,6 +81,47 @@ public sealed class SamlFlowTests : IDisposable
         return created;
     }
 
+    /// <summary>
+    /// The user manager as Jellyfin 12 behaves: a lookup hands back a fresh copy of what was
+    /// last saved, not the instance CreateUserAsync returned, so a change to an account only
+    /// counts once that instance goes through UpdateUserAsync. Returns what was saved.
+    /// </summary>
+    private Dictionary<Guid, (string Provider, string? Password, bool Admin)> AccountsStoredLikeJellyfin12()
+    {
+        var saved = new Dictionary<Guid, (string Provider, string? Password, bool Admin)>();
+        _harness.Users.CreateUserAsync(Arg.Any<string>()).Returns(call =>
+        {
+            var created = TestUsers.Create(call.Arg<string>(), Guid.NewGuid());
+            saved[created.Id] = (created.AuthenticationProviderId, created.Password, false);
+            _harness.Users.GetUserById(created.Id).Returns(_ =>
+            {
+                var copy = TestUsers.Create(created.Username, created.Id);
+                (copy.AuthenticationProviderId, copy.Password, var admin) = saved[created.Id];
+                copy.SetPermission(PermissionKind.IsAdministrator, admin);
+                return copy;
+            });
+            return Task.FromResult(created);
+        });
+        _harness.Users.UpdateUserAsync(Arg.Do<User>(user =>
+            saved[user.Id] = (user.AuthenticationProviderId, user.Password, user.HasPermission(PermissionKind.IsAdministrator))));
+        return saved;
+    }
+
+    [Fact]
+    public async Task A_new_account_is_saved_with_no_way_to_sign_in_by_password()
+    {
+        // Left unsaved, the account keeps Jellyfin's default provider and no password, which
+        // Jellyfin accepts an empty password for: anyone knowing the name could sign in.
+        var saved = AccountsStoredLikeJellyfin12();
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users", "jellyfin-admins")));
+
+        var account = Assert.Single(saved).Value;
+        Assert.Equal("Jellyfin.Plugin.SsoAuthentication.Api.SSOController", account.Provider);
+        Assert.StartsWith("$" + FakeCryptoProvider.HashId + "$", account.Password, StringComparison.Ordinal);
+        Assert.True(account.Admin);
+    }
+
     private SSOController PostedBack(string samlResponse, string pathBase = "")
     {
         var controller = _harness.Create(pathBase: pathBase);
@@ -280,6 +321,88 @@ public sealed class SamlFlowTests : IDisposable
 
         await _harness.Users.DidNotReceive().CreateUserAsync(Arg.Any<string>());
         Assert.Equal(existing.Id, Config.CanonicalLinks["alice"]);
+    }
+
+    /// <summary>
+    /// An account already on the server, stored as Jellyfin 12 stores accounts: each lookup
+    /// hands back a fresh copy of what was last saved. Returns what was saved.
+    /// </summary>
+    private Dictionary<Guid, (string? Provider, string? Password)> ExistingAccount(string name, string? provider, string? password, bool linked = false)
+    {
+        var id = Guid.NewGuid();
+        var saved = new Dictionary<Guid, (string? Provider, string? Password)> { [id] = (provider, password) };
+        User Copy()
+        {
+            var copy = TestUsers.Create(name, id);
+            // Declared non-null, but rows with no provider at all exist, and are tested here.
+            copy.AuthenticationProviderId = saved[id].Provider!;
+            copy.Password = saved[id].Password;
+            return copy;
+        }
+
+        _harness.Users.GetUserByName(name).Returns(_ => Copy());
+        _harness.Users.GetUserById(id).Returns(_ => Copy());
+        _harness.Users.UpdateUserAsync(Arg.Do<User>(user => saved[user.Id] = (user.AuthenticationProviderId, user.Password)));
+        if (linked)
+        {
+            Config.CanonicalLinks = new SerializableDictionary<string, Guid> { [name] = id };
+        }
+
+        return saved;
+    }
+
+    [Fact]
+    public async Task An_account_open_to_an_empty_password_is_locked_to_sso_when_its_owner_signs_in()
+    {
+        // What 9p4's plugin left behind on Jellyfin 12: Jellyfin's password provider, no password.
+        var saved = ExistingAccount("alice", "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider", null);
+
+        var result = await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users")));
+
+        Assert.IsType<OkObjectResult>(result);
+        var account = Assert.Single(saved).Value;
+        Assert.Equal("Jellyfin.Plugin.SsoAuthentication.Api.SSOController", account.Provider);
+        Assert.StartsWith("$" + FakeCryptoProvider.HashId + "$", account.Password, StringComparison.Ordinal);
+        var (level, message) = Assert.Single(_harness.Log.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains("alice", message, StringComparison.Ordinal);
+        await _harness.Users.DidNotReceive().CreateUserAsync(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task An_account_found_through_its_link_with_no_provider_or_password_is_locked_too()
+    {
+        // No provider at all means every provider Jellyfin has, its password provider included.
+        var saved = ExistingAccount("alice-renamed", null, null, linked: true);
+        Config.CanonicalLinks = new SerializableDictionary<string, Guid> { ["alice"] = saved.Keys.Single() };
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users")));
+
+        var account = Assert.Single(saved).Value;
+        Assert.Equal("Jellyfin.Plugin.SsoAuthentication.Api.SSOController", account.Provider);
+        Assert.False(string.IsNullOrEmpty(account.Password));
+    }
+
+    [Fact]
+    public async Task An_account_with_a_password_keeps_it()
+    {
+        var saved = ExistingAccount("alice", "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider", "$PBKDF2$existing-hash");
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users")));
+
+        Assert.Equal(("Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider", "$PBKDF2$existing-hash"), Assert.Single(saved).Value);
+        Assert.DoesNotContain(_harness.Log.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task An_account_another_provider_signs_in_is_left_to_it()
+    {
+        // LDAP, for one, checks its own directory and never accepts an empty password.
+        var saved = ExistingAccount("alice", "Jellyfin.Plugin.LDAP_Auth.LdapAuthenticationProviderPlugin", null);
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users")));
+
+        Assert.Equal(("Jellyfin.Plugin.LDAP_Auth.LdapAuthenticationProviderPlugin", (string?)null), Assert.Single(saved).Value);
+        Assert.DoesNotContain(_harness.Log.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
     }
 
     [Fact]

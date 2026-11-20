@@ -16,6 +16,7 @@ using MediaBrowser.Model.Cryptography;
 using MediaBrowser.Model.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using XmlSerializer = System.Xml.Serialization.XmlSerializer;
@@ -247,10 +248,12 @@ internal sealed class ControllerHarness
 
     public IServerConfigurationManager ServerConfiguration { get; } = Substitute.For<IServerConfigurationManager>();
 
+    public RecordingLogger<SSOController> Log { get; } = new();
+
     public SSOController Create(string scheme = "https", string host = "jellyfin.example.test", string pathBase = "", string path = "/sso/test")
     {
         var controller = new SSOController(
-            NullLogger<SSOController>.Instance,
+            Log,
             NullLoggerFactory.Instance,
             Sessions,
             Users,
@@ -275,4 +278,20 @@ internal sealed class ControllerHarness
         Authorization.GetAuthorizationInfo(Arg.Any<HttpRequest>())
             .Returns(new AuthorizationInfo { User = user, IsAuthenticated = true, Token = "user-token" });
     }
+}
+
+/// <summary>
+/// Keeps what was logged, for tests of what an administrator is told.
+/// </summary>
+internal sealed class RecordingLogger<T> : ILogger<T>
+{
+    public List<(LogLevel Level, string Message)> Entries { get; } = new();
+
+    public IDisposable? BeginScope<TState>(TState state)
+        where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        => Entries.Add((logLevel, formatter(state, exception)));
 }

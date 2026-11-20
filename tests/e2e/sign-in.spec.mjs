@@ -2,13 +2,14 @@ import { expect, test } from './harness/fixtures.mjs';
 import {
     admin,
     currentUserId,
+    emptyPasswordSignIn,
     jellyfinUser,
     signInAsAdmin,
     signInAtAuthelia,
     signInWithSso,
     stack
 } from './harness/session.mjs';
-import { PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
+import { EXPOSED_USER, PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
 
 // Accounts carry this as their authentication provider when sign-in created them: it keeps
 // them from signing in with a password.
@@ -49,6 +50,7 @@ test('a member of the Jellyfin group signs in and lands on the home screen with 
     expect(alice).toBeDefined();
     expect(await currentUserId(page)).toBe(alice.Id);
     expect(alice.Policy.IsAdministrator).toBe(false);
+    expect(alice.Policy.AuthenticationProviderId).toBe(SSO_PROVIDER_ID);
     // Jellyfin Web's header names the account it signed in.
     await expect(page.locator('.headerUserButton[title="alice"]')).toHaveCount(1);
 });
@@ -77,6 +79,22 @@ test('someone outside the Jellyfin group is turned away and gets no account', as
     await expect(page.locator('body')).toHaveText('Error. Check permissions.');
     expect(page.url()).toContain(`/sso/OID/redirect/${PROVIDER}`);
     expect(await jellyfinUser('mallory')).toBeUndefined();
+});
+
+test('an account made by sign-in cannot sign in with a password', async () => {
+    expect(await emptyPasswordSignIn('alice')).toBe(401);
+});
+
+test('an account open to an empty password is locked to sign-in when its owner signs in', async ({ page }) => {
+    const { exposedUserId } = stack();
+    // The state 9p4's plugin left its accounts in on Jellyfin 12.
+    expect(await emptyPasswordSignIn(EXPOSED_USER.name)).toBe(200);
+
+    await signInWithSso(page, EXPOSED_USER.name);
+
+    expect(await currentUserId(page)).toBe(exposedUserId);
+    expect(await emptyPasswordSignIn(EXPOSED_USER.name)).toBe(401);
+    expect((await jellyfinUser(EXPOSED_USER.name)).Policy.AuthenticationProviderId).toBe(SSO_PROVIDER_ID);
 });
 
 test('the settings page lists the provider in the dashboard', async ({ page }) => {

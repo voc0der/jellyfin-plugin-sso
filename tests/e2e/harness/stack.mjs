@@ -42,9 +42,14 @@ export const IDP_USERS = {
     alice: { displayname: 'Alice', groups: ['jellyfin-users'] },
     carol: { displayname: 'Carol', groups: ['jellyfin-users', 'jellyfin-admins'] },
     dave: { displayname: 'Dave', groups: ['jellyfin-users'] },
+    frank: { displayname: 'Frank', groups: ['jellyfin-users'] },
     mallory: { displayname: 'Mallory', groups: ['visitors'] }
 };
 export const idpPassword = name => `${name}-harness-pw`;
+
+// A Jellyfin account with Jellyfin's password provider and no password, which Jellyfin opens
+// to an empty password: how 9p4's plugin left the accounts it made on Jellyfin 12.
+export const EXPOSED_USER = { name: 'frank' };
 
 const NETWORK = 'sso-e2e';
 const JELLYFIN = 'sso-e2e-jellyfin';
@@ -497,11 +502,14 @@ export async function startStack() {
 
     await jellyfin(base, 'POST', `/sso/OID/Add/${PROVIDER}`, { token: adminToken, body: providerConfiguration() });
 
+    const exposed = await jellyfin(base, 'POST', '/Users/New', { token: adminToken, body: { Name: EXPOSED_USER.name } });
+
     return {
         base,
         proxyPort,
         jellyfinVersion: info.Version,
         pluginVersion: plugin.Version,
-        adminToken
+        adminToken,
+        exposedUserId: exposed.Id
     };
 }
