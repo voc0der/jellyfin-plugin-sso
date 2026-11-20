@@ -69,7 +69,8 @@ internal sealed class PluginScope : IDisposable
     public const string ConfigurationFileName = "Jellyfin.Plugin.SsoAuthentication.xml";
 
     /// <param name="existingConfigurationXml">This plugin's settings file, as a server already has it.</param>
-    public PluginScope(string? existingConfigurationXml = null)
+    /// <param name="legacyConfigurationXml">The settings file 9p4's plugin left behind, SSO-Auth.xml.</param>
+    public PluginScope(string? existingConfigurationXml = null, string? legacyConfigurationXml = null)
     {
         Root = Directory.CreateTempSubdirectory("sso-auth-tests-").FullName;
         ConfigurationsPath = Path.Combine(Root, "plugins", "configurations");
@@ -78,6 +79,11 @@ internal sealed class PluginScope : IDisposable
         if (existingConfigurationXml is not null)
         {
             File.WriteAllText(ConfigurationFile, existingConfigurationXml);
+        }
+
+        if (legacyConfigurationXml is not null)
+        {
+            File.WriteAllText(LegacyConfigurationFile, legacyConfigurationXml);
         }
 
         var paths = Substitute.For<IApplicationPaths>();
@@ -89,7 +95,7 @@ internal sealed class PluginScope : IDisposable
         paths.CachePath.Returns(Path.Combine(Root, "cache"));
         paths.TempDirectory.Returns(Path.Combine(Root, "temp"));
 
-        Plugin = new SSOPlugin(paths, new TestXmlSerializer());
+        Plugin = new SSOPlugin(paths, new TestXmlSerializer(), Logger);
     }
 
     public string Root { get; }
@@ -98,7 +104,11 @@ internal sealed class PluginScope : IDisposable
 
     public SSOPlugin Plugin { get; }
 
+    public RecordingLogger<SSOPlugin> Logger { get; } = new();
+
     public string ConfigurationFile => Path.Combine(ConfigurationsPath, ConfigurationFileName);
+
+    public string LegacyConfigurationFile => Path.Combine(ConfigurationsPath, "SSO-Auth.xml");
 
     public void Dispose()
     {

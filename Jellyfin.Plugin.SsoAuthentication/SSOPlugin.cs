@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Jellyfin.Plugin.SsoAuthentication.Config;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SsoAuthentication;
 
@@ -13,6 +15,11 @@ namespace Jellyfin.Plugin.SsoAuthentication;
 /// </summary>
 public class SSOPlugin : BasePlugin<PluginConfiguration>, IPlugin, IHasWebPages
 {
+    /// <summary>
+    /// The settings file of 9p4/jellyfin-plugin-sso, which uninstalling that plugin leaves behind.
+    /// </summary>
+    internal const string LegacyConfigurationFileName = "SSO-Auth.xml";
+
     /// <summary>
     /// What the settings page's script, stylesheet and linking page are served as, from
     /// <c>configurationpage?name=</c>; the page markup asks for them by these names.
@@ -24,10 +31,12 @@ public class SSOPlugin : BasePlugin<PluginConfiguration>, IPlugin, IHasWebPages
     /// </summary>
     /// <param name="applicationPaths">Internal Jellyfin interface for the ApplicationPath.</param>
     /// <param name="xmlSerializer">Internal Jellyfin interface for the XML information.</param>
-    public SSOPlugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
+    /// <param name="logger">Instance of the <see cref="ILogger{SSOPlugin}"/> interface.</param>
+    public SSOPlugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ILogger<SSOPlugin> logger)
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        ImportLegacyConfiguration(logger);
     }
 
     /// <summary>
@@ -80,6 +89,30 @@ public class SSOPlugin : BasePlugin<PluginConfiguration>, IPlugin, IHasWebPages
                 EmbeddedResourcePath = $"{GetType().Namespace}.Config.linking.js"
             },
         };
+    }
+
+    /// <summary>
+    /// Takes over the settings 9p4's plugin left behind, on a server this plugin has no settings
+    /// on yet. The format is the same, so the providers and linked accounts carry over; the old
+    /// file is left as it is.
+    /// </summary>
+    private void ImportLegacyConfiguration(ILogger logger)
+    {
+        var legacy = Path.Combine(ApplicationPaths.PluginConfigurationsPath, LegacyConfigurationFileName);
+        if (File.Exists(ConfigurationFilePath) || !File.Exists(legacy))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Copy(legacy, ConfigurationFilePath);
+            logger.LogInformation("Imported the providers and linked accounts of 9p4's SSO plugin from {File}", legacy);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(e, "Could not import the settings of 9p4's SSO plugin from {File}", legacy);
+        }
     }
 
     /// <summary>

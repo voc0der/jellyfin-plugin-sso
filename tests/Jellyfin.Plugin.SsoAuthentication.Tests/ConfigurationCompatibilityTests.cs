@@ -3,19 +3,20 @@ using Jellyfin.Plugin.SsoAuthentication.Config;
 namespace Jellyfin.Plugin.SsoAuthentication.Tests;
 
 /// <summary>
-/// A settings file outlives the plugin build that wrote it: updates keep it, so every build
-/// has to read the file earlier ones wrote. The fixture is laid out exactly as 9p4's
-/// SSO-Auth 4.0.0.4 writes it on Jellyfin 10.11, the format this plugin's settings share,
-/// with made-up hosts, secrets and accounts.
+/// Settings files outlive the plugin that wrote them. Updates keep this plugin's own, and
+/// uninstalling 9p4's plugin leaves its SSO-Auth.xml behind, which this one imports on first
+/// start. So every build has to read the files earlier ones wrote, its own and 9p4's. The
+/// fixture is laid out exactly as 9p4's SSO-Auth 4.0.0.4 writes it on Jellyfin 10.11, with
+/// made-up hosts, secrets and accounts.
 /// </summary>
 public sealed class ConfigurationCompatibilityTests
 {
     private static string Fixture() => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "SSO-Auth-4.0.0.4.xml"));
 
     [Fact]
-    public void A_settings_file_in_4_0_0_4s_format_loads_every_openid_provider_value()
+    public void Settings_left_by_9p4s_4_0_0_4_import_every_openid_provider_value()
     {
-        using var scope = new PluginScope(Fixture());
+        using var scope = new PluginScope(legacyConfigurationXml: Fixture());
 
         var oid = Assert.Single(scope.Plugin.Configuration.OidConfigs);
         Assert.Equal("authelia", oid.Key);
@@ -42,9 +43,9 @@ public sealed class ConfigurationCompatibilityTests
     }
 
     [Fact]
-    public void A_settings_file_in_4_0_0_4s_format_loads_every_saml_provider_value()
+    public void Settings_left_by_9p4s_4_0_0_4_import_every_saml_provider_value()
     {
-        using var scope = new PluginScope(Fixture());
+        using var scope = new PluginScope(legacyConfigurationXml: Fixture());
 
         var saml = Assert.Single(scope.Plugin.Configuration.SamlConfigs);
         Assert.Equal("keycloak", saml.Key);
@@ -87,12 +88,46 @@ public sealed class ConfigurationCompatibilityTests
     }
 
     [Fact]
+    public void The_import_copies_9p4s_file_and_leaves_it_in_place()
+    {
+        using var scope = new PluginScope(legacyConfigurationXml: Fixture());
+
+        Assert.Equal(Fixture(), File.ReadAllText(scope.ConfigurationFile));
+        Assert.Equal(Fixture(), File.ReadAllText(scope.LegacyConfigurationFile));
+        var (level, message) = Assert.Single(scope.Logger.Entries);
+        Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Information, level);
+        Assert.Contains(scope.LegacyConfigurationFile, message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Settings_of_its_own_are_never_replaced_by_9p4s()
+    {
+        var own = new PluginConfiguration();
+        own.OidConfigs["pocket-id"] = new OidConfig { OidEndpoint = "https://id.example.test" };
+        // Written as Jellyfin writes settings: UTF-8, declared as such.
+        string ownXml;
+        using (var stream = new MemoryStream())
+        {
+            new TestXmlSerializer().SerializeToStream(own, stream);
+            ownXml = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        }
+
+        using var scope = new PluginScope(existingConfigurationXml: ownXml, legacyConfigurationXml: Fixture());
+
+        Assert.Equal(new[] { "pocket-id" }, scope.Plugin.Configuration.OidConfigs.Keys);
+        Assert.Empty(scope.Plugin.Configuration.SamlConfigs);
+        Assert.Empty(scope.Logger.Entries);
+    }
+
+    [Fact]
     public void A_fresh_installation_starts_with_no_providers()
     {
         using var scope = new PluginScope();
 
         Assert.Empty(scope.Plugin.Configuration.OidConfigs);
         Assert.Empty(scope.Plugin.Configuration.SamlConfigs);
+        Assert.False(File.Exists(scope.LegacyConfigurationFile));
+        Assert.Empty(scope.Logger.Entries);
     }
 
     [Fact]
