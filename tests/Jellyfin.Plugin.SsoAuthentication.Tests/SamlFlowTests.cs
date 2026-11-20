@@ -401,7 +401,7 @@ public sealed class SamlFlowTests : IDisposable
         var account = Assert.Single(saved).Value;
         Assert.Equal("Jellyfin.Plugin.SsoAuthentication.Api.SSOController", account.Provider);
         Assert.StartsWith("$" + FakeCryptoProvider.HashId + "$", account.Password, StringComparison.Ordinal);
-        var (level, message) = Assert.Single(_harness.Log.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        var (_, message) = Assert.Single(_harness.Log.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
         Assert.Contains("alice", message, StringComparison.Ordinal);
         await _harness.Users.DidNotReceive().CreateUserAsync(Arg.Any<string>());
     }
@@ -439,7 +439,9 @@ public sealed class SamlFlowTests : IDisposable
 
         await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users")));
 
-        Assert.Equal(("Jellyfin.Plugin.LDAP_Auth.LdapAuthenticationProviderPlugin", (string?)null), Assert.Single(saved).Value);
+        var account = Assert.Single(saved).Value;
+        Assert.Equal("Jellyfin.Plugin.LDAP_Auth.LdapAuthenticationProviderPlugin", account.Provider);
+        Assert.Null(account.Password);
         Assert.DoesNotContain(_harness.Log.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
     }
 

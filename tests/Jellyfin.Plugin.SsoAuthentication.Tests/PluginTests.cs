@@ -20,7 +20,7 @@ public sealed class PluginTests
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "manifest.json")) && File.Exists(Path.Combine(dir.FullName, "Directory.Build.props")))
+            if (File.Exists(Path.Join(dir.FullName, "manifest.json")) && File.Exists(Path.Join(dir.FullName, "Directory.Build.props")))
             {
                 return dir.FullName;
             }
@@ -42,8 +42,8 @@ public sealed class PluginTests
     public void Id_matches_the_catalogue_and_the_build_properties()
     {
         var root = RepositoryRoot();
-        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")));
-        var props = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
+        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Join(root, "manifest.json")));
+        var props = XDocument.Load(Path.Join(root, "Directory.Build.props"));
 
         Assert.Equal(PluginGuid, manifest.RootElement[0].GetProperty("guid").GetString());
         Assert.Equal(PluginGuid, props.Descendants("PluginGuid").Single().Value);
@@ -53,7 +53,7 @@ public sealed class PluginTests
     public void Name_is_the_catalogue_name_and_opens_the_settings_page()
     {
         using var scope = new PluginScope();
-        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), "manifest.json")));
+        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Join(RepositoryRoot(), "manifest.json")));
 
         // The dashboard's plugin list links to the first page, which carries the plugin's name.
         Assert.Equal("SSO Authentication", scope.Plugin.Name);

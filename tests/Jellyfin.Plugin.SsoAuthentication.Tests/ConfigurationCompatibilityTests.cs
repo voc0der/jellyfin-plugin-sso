@@ -11,7 +11,7 @@ namespace Jellyfin.Plugin.SsoAuthentication.Tests;
 /// </summary>
 public sealed class ConfigurationCompatibilityTests
 {
-    private static string Fixture() => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "SSO-Auth-4.0.0.4.xml"));
+    private static string Fixture() => File.ReadAllText(Path.Join(AppContext.BaseDirectory, "Fixtures", "SSO-Auth-4.0.0.4.xml"));
 
     [Fact]
     public void Settings_left_by_9p4s_4_0_0_4_import_every_openid_provider_value()

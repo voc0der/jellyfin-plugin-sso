@@ -314,7 +314,7 @@ public class AuthRequest
     /// <param name="assertionConsumerServiceUrl">The SAML assertion URL.</param>
     public AuthRequest(string issuer, string assertionConsumerServiceUrl)
     {
-        _id = "_" + Guid.NewGuid().ToString();
+        _id = "_" + Guid.NewGuid();
         _issueInstant = DateTime.Now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture);
 
         _issuer = issuer;

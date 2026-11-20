@@ -18,7 +18,7 @@ export async function jellyfinUser(name) {
 // Starts a sign-in the way a "Sign in with SSO" button does, and signs in at Authelia's portal.
 export async function signInAtAuthelia(page, name, start = `${JELLYFIN_URL}/sso/OID/start/${PROVIDER}`) {
     await page.goto(start);
-    await expect(page).toHaveURL(new RegExp('^' + AUTH_URL.replace(/\./g, '\\.')));
+    await page.waitForURL(url => url.origin === AUTH_URL);
     await page.locator('#username-textfield').fill(name);
     await page.locator('#password-textfield').fill(idpPassword(name));
     await page.locator('#sign-in-button').click();

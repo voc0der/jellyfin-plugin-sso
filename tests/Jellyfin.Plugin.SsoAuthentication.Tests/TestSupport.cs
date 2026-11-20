@@ -68,12 +68,15 @@ internal sealed class PluginScope : IDisposable
     /// </summary>
     public const string ConfigurationFileName = "Jellyfin.Plugin.SsoAuthentication.xml";
 
+    /// <summary>
+    /// Constructs the plugin over a new, empty data directory holding the given settings files.
+    /// </summary>
     /// <param name="existingConfigurationXml">This plugin's settings file, as a server already has it.</param>
     /// <param name="legacyConfigurationXml">The settings file 9p4's plugin left behind, SSO-Auth.xml.</param>
     public PluginScope(string? existingConfigurationXml = null, string? legacyConfigurationXml = null)
     {
         Root = Directory.CreateTempSubdirectory("sso-auth-tests-").FullName;
-        ConfigurationsPath = Path.Combine(Root, "plugins", "configurations");
+        ConfigurationsPath = Path.Join(Root, "plugins", "configurations");
         Directory.CreateDirectory(ConfigurationsPath);
 
         if (existingConfigurationXml is not null)
@@ -88,12 +91,12 @@ internal sealed class PluginScope : IDisposable
 
         var paths = Substitute.For<IApplicationPaths>();
         paths.ProgramDataPath.Returns(Root);
-        paths.DataPath.Returns(Path.Combine(Root, "data"));
-        paths.ConfigurationDirectoryPath.Returns(Path.Combine(Root, "config"));
-        paths.PluginsPath.Returns(Path.Combine(Root, "plugins"));
+        paths.DataPath.Returns(Path.Join(Root, "data"));
+        paths.ConfigurationDirectoryPath.Returns(Path.Join(Root, "config"));
+        paths.PluginsPath.Returns(Path.Join(Root, "plugins"));
         paths.PluginConfigurationsPath.Returns(ConfigurationsPath);
-        paths.CachePath.Returns(Path.Combine(Root, "cache"));
-        paths.TempDirectory.Returns(Path.Combine(Root, "temp"));
+        paths.CachePath.Returns(Path.Join(Root, "cache"));
+        paths.TempDirectory.Returns(Path.Join(Root, "temp"));
 
         Plugin = new SSOPlugin(paths, new TestXmlSerializer(), Logger);
     }
@@ -106,9 +109,9 @@ internal sealed class PluginScope : IDisposable
 
     public RecordingLogger<SSOPlugin> Logger { get; } = new();
 
-    public string ConfigurationFile => Path.Combine(ConfigurationsPath, ConfigurationFileName);
+    public string ConfigurationFile => Path.Join(ConfigurationsPath, ConfigurationFileName);
 
-    public string LegacyConfigurationFile => Path.Combine(ConfigurationsPath, "SSO-Auth.xml");
+    public string LegacyConfigurationFile => Path.Join(ConfigurationsPath, "SSO-Auth.xml");
 
     public void Dispose()
     {

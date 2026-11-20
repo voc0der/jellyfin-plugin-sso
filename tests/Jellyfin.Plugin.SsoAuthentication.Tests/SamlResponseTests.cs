@@ -127,7 +127,7 @@ public sealed class SamlResponseTests : IDisposable
     {
         // XXE: an external entity would read a file off the Jellyfin server into the name.
         // The document has no resolver, so the entity stays an empty reference.
-        var passwd = Path.Combine(Path.GetTempPath(), "sso-auth-xxe-" + Guid.NewGuid().ToString("N"));
+        var passwd = Path.Join(Path.GetTempPath(), "sso-auth-xxe-" + Guid.NewGuid().ToString("N"));
         File.WriteAllText(passwd, "root:x:0:0:root:/root:/bin/sh");
         try
         {

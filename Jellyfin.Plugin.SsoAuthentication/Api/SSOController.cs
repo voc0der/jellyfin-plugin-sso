@@ -159,14 +159,9 @@ public class SSOController : ControllerBase
                 return ReturnError(StatusCodes.Status400BadRequest, $"Error logging in: {result.Error} - {result.ErrorDescription}");
             }
 
-            if (!config.EnableFolderRoles && config.EnabledFolders != null)
-            {
-                timedState.Folders = new List<string>(config.EnabledFolders);
-            }
-            else
-            {
-                timedState.Folders = new List<string>();
-            }
+            timedState.Folders = !config.EnableFolderRoles && config.EnabledFolders != null
+                ? new List<string>(config.EnabledFolders)
+                : new List<string>();
 
             timedState.EnableLiveTv = config.EnableLiveTv;
             timedState.EnableLiveTvManagement = config.EnableLiveTvManagement;
@@ -235,80 +230,48 @@ public class SSOController : ControllerBase
                                     }
                                 }
 
-                                if (missingSegment || !json.TryGetValue(segments[^1], out var rolesToken) || rolesToken is not JArray rolesArray)
-                                {
-                                    roles = new List<string>();
-                                }
-                                else
-                                {
-                                    // The final step is to take the JSON and turn it from a dictionary into a string
-                                    roles = rolesArray.ToObject<List<string>>();
-                                }
+                                // The final step is to take the JSON and turn it from a dictionary into a string
+                                roles = missingSegment || !json.TryGetValue(segments[^1], out var rolesToken) || rolesToken is not JArray rolesArray
+                                    ? new List<string>()
+                                    : rolesArray.ToObject<List<string>>();
                             }
                         }
 
                         foreach (string role in roles)
                         {
                             // Check if allowed to login based on roles
-                            if (config.Roles != null && config.Roles.Any())
+                            if (config.Roles != null && config.Roles.Contains(role))
                             {
-                                foreach (string validRoles in config.Roles)
-                                {
-                                    if (role.Equals(validRoles))
-                                    {
-                                        timedState.Valid = true;
-                                    }
-                                }
+                                timedState.Valid = true;
                             }
 
                             // Check if admin based on roles
-                            if (config.AdminRoles != null && config.AdminRoles.Any())
+                            if (config.AdminRoles != null && config.AdminRoles.Contains(role))
                             {
-                                foreach (string validAdminRoles in config.AdminRoles)
-                                {
-                                    if (role.Equals(validAdminRoles))
-                                    {
-                                        timedState.Admin = true;
-                                    }
-                                }
+                                timedState.Admin = true;
                             }
 
                             // Get allowed folders from roles
-                            if (config.EnableFolderRoles)
+                            if (config.EnableFolderRoles && config.FolderRoleMapping != null)
                             {
-                                foreach (FolderRoleMap folderRoleMap in config.FolderRoleMapping)
+                                foreach (FolderRoleMap folderRoleMap in config.FolderRoleMapping.Where(map => string.Equals(role, map.Role?.Trim(), StringComparison.Ordinal)))
                                 {
-                                    if (role.Equals(folderRoleMap.Role?.Trim()))
-                                    {
-                                        timedState.Folders.AddRange(folderRoleMap.Folders);
-                                    }
+                                    timedState.Folders.AddRange(folderRoleMap.Folders);
                                 }
                             }
 
                             if (config.EnableLiveTvRoles)
                             {
                                 // Check if allowed Live TV based on roles
-                                if (config.LiveTvRoles != null && config.LiveTvRoles.Any())
+                                if (config.LiveTvRoles != null && config.LiveTvRoles.Contains(role))
                                 {
-                                    foreach (string validLiveTvRoles in config.LiveTvRoles)
-                                    {
-                                        if (role.Equals(validLiveTvRoles))
-                                        {
-                                            timedState.EnableLiveTv = true;
-                                        }
-                                    }
+                                    timedState.EnableLiveTv = true;
                                 }
 
                                 // Check if allowed Live TV management based on roles
-                                if (config.LiveTvManagementRoles != null && config.LiveTvManagementRoles.Any())
+                                if (config.LiveTvManagementRoles != null && config.LiveTvManagementRoles.Contains(role))
                                 {
-                                    foreach (string validLiveTvManagementRoles in config.LiveTvManagementRoles)
-                                    {
-                                        if (role.Equals(validLiveTvManagementRoles))
-                                        {
-                                            timedState.EnableLiveTvManagement = true;
-                                        }
-                                    }
+                                    timedState.EnableLiveTvManagement = true;
                                 }
                             }
                         }
@@ -319,15 +282,12 @@ public class SSOController : ControllerBase
             // If the provider doesn't support the preferred username claim, then use the sub claim
             if (!timedState.Valid)
             {
-                foreach (var claim in result.User.Claims)
+                foreach (var claim in result.User.Claims.Where(claim => claim.Type == "sub"))
                 {
-                    if (claim.Type == "sub")
+                    timedState.Username = claim.Value;
+                    if (config.Roles == null || config.Roles.Length == 0)
                     {
-                        timedState.Username = claim.Value;
-                        if (config.Roles.Length == 0)
-                        {
-                            timedState.Valid = true;
-                        }
+                        timedState.Valid = true;
                     }
                 }
             }
@@ -575,8 +535,9 @@ public class SSOController : ControllerBase
 
         bool isLinking = relayState == "linking";
 
-        _logger.LogInformation(
-            $"SAML request has relayState of {relayState}");
+        // What the relay state means, not the value itself: it comes from the request, and could
+        // put forged lines in the log.
+        _logger.LogInformation("SAML response received, for linking: {IsLinking}", isLinking);
 
         if (config.Enabled)
         {
@@ -743,65 +704,35 @@ public class SSOController : ControllerBase
                 return ReturnError(StatusCodes.Status401Unauthorized, "Error. Check permissions.");
             }
 
-            List<string> folders;
-            if (!config.EnableFolderRoles && config.EnabledFolders != null)
-            {
-                folders = new List<string>(config.EnabledFolders);
-            }
-            else
-            {
-                folders = new List<string>();
-            }
+            List<string> folders = !config.EnableFolderRoles && config.EnabledFolders != null
+                ? new List<string>(config.EnabledFolders)
+                : new List<string>();
 
             foreach (string role in samlResponse.GetCustomAttributes("Role"))
             {
-                if (config.AdminRoles != null)
+                if (config.AdminRoles != null && config.AdminRoles.Contains(role))
                 {
-                    foreach (string allowedRole in config.AdminRoles)
-                    {
-                        if (allowedRole.Equals(role))
-                        {
-                            isAdmin = true;
-                        }
-                    }
+                    isAdmin = true;
                 }
 
-                if (config.EnableFolderRoles)
+                if (config.EnableFolderRoles && config.FolderRoleMapping != null)
                 {
-                    if (config.FolderRoleMapping != null)
+                    foreach (FolderRoleMap folderRoleMap in config.FolderRoleMapping.Where(map => string.Equals(map.Role, role, StringComparison.Ordinal)))
                     {
-                        foreach (FolderRoleMap folderRoleMap in config.FolderRoleMapping)
-                        {
-                            if (folderRoleMap.Role.Equals(role))
-                            {
-                                folders.AddRange(folderRoleMap.Folders);
-                            }
-                        }
+                        folders.AddRange(folderRoleMap.Folders);
                     }
                 }
 
                 if (config.EnableLiveTvRoles)
                 {
-                    if (config.LiveTvRoles != null)
+                    if (config.LiveTvRoles != null && config.LiveTvRoles.Contains(role))
                     {
-                        foreach (string allowedLiveTvRole in config.LiveTvRoles)
-                        {
-                            if (allowedLiveTvRole.Equals(role))
-                            {
-                                liveTv = true;
-                            }
-                        }
+                        liveTv = true;
                     }
 
-                    if (config.LiveTvManagementRoles != null)
+                    if (config.LiveTvManagementRoles != null && config.LiveTvManagementRoles.Contains(role))
                     {
-                        foreach (string allowedLiveTvManagementRole in config.LiveTvManagementRoles)
-                        {
-                            if (allowedLiveTvManagementRole.Equals(role))
-                            {
-                                liveTvManagement = true;
-                            }
-                        }
+                        liveTvManagement = true;
                     }
                 }
             }
@@ -868,32 +799,16 @@ public class SSOController : ControllerBase
 
     private async Task<Guid> CreateCanonicalLinkAndUserIfNotExist(string mode, string provider, string canonicalName)
     {
-        User user = null;
-
-        // First try to get the user by its id in case it was already registered before
-        Guid userId = Guid.Empty;
-        try
-        {
-            userId = GetCanonicalLink(mode, provider, canonicalName);
-        }
-        catch (KeyNotFoundException)
-        {
-            userId = Guid.Empty;
-        }
-
-        // No userId found? Let's try and find the user by name instead
-        if (userId == Guid.Empty)
-        {
-            user = _userManager.GetUserByName(canonicalName);
-        }
-        else
-        {
-            user = _userManager.GetUserById(userId);
-        }
+        // First try to get the user by its id in case it was already registered before, and
+        // with no link, by name instead
+        Guid userId = FindCanonicalLink(mode, provider, canonicalName);
+        User user = userId == Guid.Empty
+            ? _userManager.GetUserByName(canonicalName)
+            : _userManager.GetUserById(userId);
 
         if (user == null)
         {
-            _logger.LogInformation($"SSO user {canonicalName} doesn't exist, creating...");
+            _logger.LogInformation("SSO user {Username} doesn't exist, creating...", canonicalName);
             user = await _userManager.CreateUserAsync(canonicalName).ConfigureAwait(false);
             await LockToSso(user).ConfigureAwait(false);
 
@@ -912,16 +827,7 @@ public class SSOController : ControllerBase
             await LockToSso(user).ConfigureAwait(false);
         }
 
-        userId = Guid.Empty;
-        try
-        {
-            userId = GetCanonicalLink(mode, provider, canonicalName);
-        }
-        catch (KeyNotFoundException)
-        {
-            userId = Guid.Empty;
-        }
-
+        userId = FindCanonicalLink(mode, provider, canonicalName);
         if (userId == Guid.Empty)
         {
             _logger.LogInformation("SSO user link doesn't exist, creating...");
@@ -960,14 +866,22 @@ public class SSOController : ControllerBase
 
     private Guid GetCanonicalLink(string mode, string provider, string canonicalName)
     {
-        SerializableDictionary<string, Guid> links = null;
-        Guid userId = Guid.Empty;
+        return GetCanonicalLinks(mode, provider)[canonicalName];
+    }
 
-        links = GetCanonicalLinks(mode, provider);
-
-        userId = links[canonicalName];
-
-        return userId;
+    /// <summary>
+    /// The account linked to the provider's name for someone, or <see cref="Guid.Empty"/> if none is.
+    /// </summary>
+    private Guid FindCanonicalLink(string mode, string provider, string canonicalName)
+    {
+        try
+        {
+            return GetCanonicalLink(mode, provider, canonicalName);
+        }
+        catch (KeyNotFoundException)
+        {
+            return Guid.Empty;
+        }
     }
 
     /// <summary>
@@ -1139,12 +1053,7 @@ public class SSOController : ControllerBase
     [Produces(MediaTypeNames.Application.Json)]
     private ActionResult OidLink(string provider, Guid jellyfinUserId, AuthResponse response)
     {
-        OidConfig config;
-        try
-        {
-            config = SSOPlugin.Instance.Configuration.OidConfigs[provider];
-        }
-        catch (KeyNotFoundException)
+        if (!SSOPlugin.Instance.Configuration.OidConfigs.ContainsKey(provider))
         {
             return BadRequest("No matching provider found");
         }
@@ -1213,7 +1122,9 @@ public class SSOController : ControllerBase
     /// <param name="avatarUrl">The new avatar url for the user.</param>
     private async Task<AuthenticationResult> Authenticate(Guid userId, bool isAdmin, bool enableAuthorization, bool enableAllFolders, string[] enabledFolders, bool enableLiveTv, bool enableLiveTvAdmin, AuthResponse authResponse, string defaultProvider, string avatarUrl)
     {
-        User user = _userManager.GetUserById(userId);
+        // The caller has just found or created this account.
+        User user = _userManager.GetUserById(userId)
+            ?? throw new InvalidOperationException("The account signing in no longer exists.");
         if (enableAuthorization)
         {
             user.SetPermission(PermissionKind.IsAdministrator, isAdmin);
@@ -1291,7 +1202,7 @@ public class SSOController : ControllerBase
         {
             user.AuthenticationProviderId = defaultProvider;
             await _userManager.UpdateUserAsync(user).ConfigureAwait(false);
-            _logger.LogInformation("Set default login provider to " + defaultProvider);
+            _logger.LogInformation("Set default login provider to {Provider}", defaultProvider);
         }
 
         return await _sessionManager.AuthenticateDirect(authRequest).ConfigureAwait(false);
@@ -1311,16 +1222,7 @@ public class SSOController : ControllerBase
 
     private string GetRequestBase(string schemeOverride = null, int? portOverride = null)
     {
-        int requestPort;
-
-        if (portOverride != null)
-        {
-            requestPort = portOverride.Value;
-        }
-        else
-        {
-            requestPort = Request.Host.Port ?? -1;
-        }
+        int requestPort = portOverride ?? Request.Host.Port ?? -1;
 
         if ((requestPort == 80 && string.Equals(Request.Scheme, "http", StringComparison.OrdinalIgnoreCase)) || (requestPort == 443 && string.Equals(Request.Scheme, "https", StringComparison.OrdinalIgnoreCase)))
         {

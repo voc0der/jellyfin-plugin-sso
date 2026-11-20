@@ -98,7 +98,7 @@ public class SSOPlugin : BasePlugin<PluginConfiguration>, IPlugin, IHasWebPages
     /// </summary>
     private void ImportLegacyConfiguration(ILogger logger)
     {
-        var legacy = Path.Combine(ApplicationPaths.PluginConfigurationsPath, LegacyConfigurationFileName);
+        var legacy = Path.Join(ApplicationPaths.PluginConfigurationsPath, LegacyConfigurationFileName);
         if (File.Exists(ConfigurationFilePath) || !File.Exists(legacy))
         {
             return;

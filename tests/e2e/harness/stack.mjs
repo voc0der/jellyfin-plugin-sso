@@ -10,7 +10,6 @@
 import { execFile } from 'node:child_process';
 import { generateKeyPairSync, pbkdf2Sync, randomBytes } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { request as httpsRequest } from 'node:https';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -271,28 +270,6 @@ ${server('jellyfin', 'http://jellyfin:8096')}
 `;
 }
 
-// A request to one of the proxy's names from this process, which cannot resolve them.
-export function throughProxy(proxyPort, ca, url, { method = 'GET', headers = {}, body } = {}) {
-    const target = new URL(url);
-    return new Promise((resolvePromise, reject) => {
-        const req = httpsRequest({
-            host: '127.0.0.1',
-            port: proxyPort,
-            method,
-            path: target.pathname + target.search,
-            servername: target.hostname,
-            ca,
-            headers: { ...headers, Host: target.hostname }
-        }, res => {
-            const chunks = [];
-            res.on('data', chunk => chunks.push(chunk));
-            res.on('end', () => resolvePromise({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }));
-        });
-        req.on('error', reject);
-        req.end(body);
-    });
-}
-
 async function waitFor(check, timeoutMs, what, container) {
     const deadline = Date.now() + timeoutMs;
     let last = 'never responded';
@@ -459,9 +436,10 @@ export async function startStack() {
     const base = `http://127.0.0.1:${await port(JELLYFIN, '8096/tcp')}`;
     const proxyPort = Number(await port(PROXY, '443/tcp'));
 
+    // Asked inside its own container: the browser tests go through the proxy anyway.
     await waitFor(async () => {
-        const health = await throughProxy(proxyPort, ca, `${AUTH_URL}/api/health`);
-        return health.status === 200 || `${health.status} ${health.body.slice(0, 120)}`;
+        const health = await docker('exec', AUTHELIA, 'wget', '-q', '-O', '-', 'http://127.0.0.1:9091/api/health').catch(error => String(error.stderr ?? error.message));
+        return /"status":\s*"OK"/.test(health) || health.slice(0, 120);
     }, 60_000, 'Authelia', AUTHELIA).catch(async error => {
         throw new Error(`${error.message}\n${await logsOf(AUTHELIA, 40)}`);
     });

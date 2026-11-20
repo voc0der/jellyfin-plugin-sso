@@ -138,9 +138,7 @@ const ssoConfigurationPage = {
   },
   serializeRoleMappings: (container) => {
     var out = [];
-    const roles = [
-      ...container.querySelectorAll(".sso-role-mapping-container"),
-    ].forEach((elem) => {
+    [...container.querySelectorAll(".sso-role-mapping-container")].forEach((elem) => {
       const role = elem.querySelector(".sso-role-mapping-name").value;
       const checklist = elem.querySelector(".sso-folder-list");
 
