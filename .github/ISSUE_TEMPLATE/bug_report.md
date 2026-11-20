@@ -1,40 +1,37 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Something does not work as described
 title: ""
 labels: bug
 assignees: ""
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**What happened**
+A clear and concise description of what went wrong.
 
-**To Reproduce**
-Steps to reproduce the behavior:
+**Steps to reproduce**
 
 1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+2. Sign in with '...'
+3. See the error
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**What you expected**
+What should have happened instead.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Identity provider**
+Which provider (for example Authelia, authentik, Keycloak), its version, and whether you use
+OpenID Connect or SAML.
 
 **Configuration**
-Include only the relevant, redacted configuration. Remove client secrets, API keys,
-access and refresh tokens, private keys, and personal data. Never upload the full
-plugin configuration. Report suspected vulnerabilities privately through
-https://github.com/voc0der/jellyfin-plugin-sso/security/advisories/new.
+The provider's settings in the plugin, with the client secret, certificate, API keys, tokens and
+personal data removed. Never upload the whole settings file. Report suspected vulnerabilities
+privately instead: https://github.com/voc0der/jellyfin-plugin-sso/security/advisories/new
 
-**Versions (please complete the following information):**
+**Versions**
 
-- OS: [e.g. Linux]
-- Browser: [e.g. chrome, safari]
-- Jellyfin Version: [e.g. 10.8 Alpha 4]
-- Plugin Version: [e.g. 2.0.1.0 or a Git tag]
+- Jellyfin: [e.g. 12.4.0]
+- Plugin: [e.g. 1.0.0.1, or the PR number of a test build]
+- Browser or app: [e.g. Firefox 145, Jellyfin Android]
 
-**Additional context**
-Add any other context about the problem here. Was the plugin built from source?
+**Logs**
+The Jellyfin log lines around the sign-in, and any errors in the browser's console.

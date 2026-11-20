@@ -47,6 +47,9 @@ Below is the `identity_providers` section of an Authelia config:
 
 ### Authelia v4.38 and above
 
+This is the setup the [sign-in tests](tests/e2e/README.md) run against Authelia 4.39 and
+Jellyfin 12 on every change.
+
 ```yaml
 identity_providers:
   oidc:
@@ -54,13 +57,20 @@ identity_providers:
     clients:
       - client_id: jellyfin
         client_name: My media server
-        # Client secret should be randomly generated
+        # A digest of a randomly generated secret: authelia crypto hash generate pbkdf2
         client_secret: <redacted>
         token_endpoint_auth_method: client_secret_post
         authorization_policy: one_factor
+        require_pkce: true
+        pkce_challenge_method: S256
+        scopes: [openid, profile, groups]
         redirect_uris:
           - https://jellyfin.example.com/sso/OID/redirect/authelia
 ```
+
+The plugin reads the username and groups from Authelia's userinfo endpoint, so no claims
+policy is needed. If you turn on `DoNotLoadProfile`, add one that puts `preferred_username` and
+`groups` in the ID token instead.
 
 ### Authelia v4.37 and below
 
@@ -92,7 +102,16 @@ authelia:
   RoleClaim: groups
   OidScopes: ["groups"]
   DisablePushedAuthorization: true
+  AvatarUrlFormat: "@{picture}" # (optional) the account's picture in Authelia
 ```
+
+With `AvatarUrlFormat`, each sign-in makes the `picture` set on the Authelia account (4.39 and
+above) the profile picture. Jellyfin fetches it itself, so the address has to be reachable from
+the Jellyfin server. A picture that cannot be fetched leaves the old one.
+
+`DisablePushedAuthorization` is required with Authelia: the plugin authenticates a pushed
+authorization request with HTTP Basic but its token request with `client_secret_post`, and
+Authelia accepts one method per client.
 
 ## authentik
 
@@ -106,15 +125,15 @@ To do this, we:
 
 - create a **Custom Property Mapping**
 
-  ![image](img/authentik-config-01.jpg)
+  ![image](docs/images/authentik-config-01.jpg)
 
 - Create a **Scope Mapping**
 
-  ![image](img/authentik-config-02.jpg)
+  ![image](docs/images/authentik-config-02.jpg)
 
 - Assign the following attributes:
 
-  ![image](img/authentik-config-03.jpg)
+  ![image](docs/images/authentik-config-03.jpg)
 
   ```yaml
   # A nice, human readable name
@@ -134,13 +153,13 @@ Now we can add this property mapping to authentik's Jellyfin OAuth provider:
 
 - Navigate to `Applications/providers`
 
-  ![image](img/authentik-config-04.jpg)
+  ![image](docs/images/authentik-config-04.jpg)
 
 - Edit / Update your Jellyfin OAuth provider
 - Verify your **"Redirect URIs/Origins (RegEx)"** follows the format: `https://domain.tld/sso/OID/redirect/Authentik`.
 - Under **"Advanced Protocol Settings"**, add the **Group Membership** Scope
 
-  ![image](img/authentik-config-05.jpg)
+  ![image](docs/images/authentik-config-05.jpg)
 
 ### Jellyfin's Config
 

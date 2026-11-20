@@ -1,0 +1,90 @@
+name: Sign-in
+
+# Signs in to a real Jellyfin through a real Authelia with this commit's release archive of the
+# plugin installed, behind a TLS proxy: new accounts, administrators, someone the provider's
+# groups keep out, account linking, and the settings page in the dashboard. A plugin that loads
+# but hands Jellyfin Web a session it cannot use, or makes accounts anyone can sign in to with
+# an empty password, builds and passes every unit test, so nothing else here would notice.
+#
+# Only for changes that can affect sign-in: the plugin, its packaging, and the harness itself.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Jellyfin.Plugin.SsoAuthentication/**'
+      - 'Directory.Build.props'
+      - 'build.sh'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Jellyfin.Plugin.SsoAuthentication/**'
+      - 'Directory.Build.props'
+      - 'build.sh'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+
+    # Locally the suite takes about a minute once the images are cached; CI adds installing the
+    # browser and pulling the images. The bound is for a server that never comes up.
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: tests/e2e
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Setup Node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version: 26
+        cache: npm
+        cache-dependency-path: tests/e2e/package-lock.json
+
+    - name: Install the harness
+      run: |
+        npm ci
+        npx playwright install --with-deps chromium
+
+    # The images are read out of the harness rather than written here, so the two cannot
+    # disagree. Pulled up front so a slow registry shows up as this step's time, not as a test
+    # that looks hung.
+    - name: Pull the Jellyfin, Authelia and proxy images
+      run: |
+        for name in JELLYFIN_IMAGE AUTHELIA_IMAGE PROXY_IMAGE; do
+          image=$(grep -oP "export const ${name} = process.env.${name} \?\? '\K[^']+" harness/stack.mjs)
+          if [ -z "$image" ]; then
+            echo "harness/stack.mjs names no ${name}." >&2
+            exit 1
+          fi
+          docker pull --quiet "$image"
+        done
+
+    - name: Run the harness
+      run: npx playwright test
+
+    - name: Keep the evidence
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: sign-in-harness
+        path: |
+          tests/e2e/playwright-report/
+          tests/e2e/test-results/
+        if-no-files-found: ignore

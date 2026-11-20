@@ -1,11 +1,11 @@
 [
   {
     "category": "Authentication",
-    "guid": "505ce9d1-d916-42fa-86ca-673ef241d7df",
+    "guid": "3c3b1a1d-7470-466f-a565-b3041e54724d",
     "name": "SSO Authentication",
-    "description": "Sign in to Jellyfin through an OpenID Connect or SAML provider. Independently maintained fork of 9p4/jellyfin-plugin-sso.",
+    "description": "Lets users sign in to Jellyfin through an OpenID Connect or SAML identity provider such as Authelia, authentik, Keycloak, Pocket ID or Kanidm. Accounts are created on first sign-in, and the provider's roles can decide who may sign in, who is an administrator, and which libraries and Live TV each account can use. Continues 9p4's SSO-Auth plugin under its own ID: remove that plugin first, and this one picks up its providers and linked accounts.",
     "owner": "voc0der",
-    "overview": "Authenticate users against an SSO provider",
+    "overview": "Sign in to Jellyfin with OpenID Connect or SAML",
     "imageUrl": "https://raw.githubusercontent.com/voc0der/jellyfin-plugin-sso/main/icon.png",
     "versions": []
   }

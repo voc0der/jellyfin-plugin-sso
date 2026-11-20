@@ -1,0 +1,13 @@
+{
+  "name": "sso-auth-e2e",
+  "version": "1.0.0",
+  "description": "Signs in to a real Jellyfin through a real Authelia with this repository's build of the plugin.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

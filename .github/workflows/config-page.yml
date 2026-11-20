@@ -1,31 +1,56 @@
 name: Settings page
 
+# Loads the settings page in a real browser against a stubbed ApiClient and checks that loading,
+# saving and deleting providers still work, and that saving keeps what the page does not show,
+# account links above all. A page whose Save drops every link builds, loads and passes every
+# unit test, so nothing else here would notice.
+#
+# Only for changes that can affect the page: its markup and script, the configuration class it
+# loads and saves, and the harness itself.
+
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+    branches: [ main ]
+    paths:
+      - 'Jellyfin.Plugin.SsoAuthentication/Config/**'
+      - 'tests/config-page/**'
+      - '.github/workflows/config-page.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Jellyfin.Plugin.SsoAuthentication/Config/**'
+      - 'tests/config-page/**'
+      - '.github/workflows/config-page.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: settings-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
-
 jobs:
-  browser:
+  harness:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+
+    # The bound is for a browser that never comes up.
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: tests/config-page
+
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
-      - run: npm test
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+    - name: Setup Node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version: 26
+        cache: npm
+        cache-dependency-path: tests/config-page/package-lock.json
+
+    - name: Install the harness
+      run: |
+        npm ci
+        npx playwright install --with-deps chromium
+
+    - name: Run the harness
+      run: npm test

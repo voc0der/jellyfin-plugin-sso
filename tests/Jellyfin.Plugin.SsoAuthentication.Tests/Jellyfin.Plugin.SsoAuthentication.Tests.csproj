@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Jellyfin.Plugin.SsoAuthentication.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="NSubstitute" Version="6.2.0" />
+    <!-- xunit.v3.mtp-off, not xunit.v3: the plain package turns on Microsoft Testing
+         Platform, which refuses to run under VSTest-mode `dotnet test` on the .NET 10 SDK. -->
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+        The plugin references these with ExcludeAssets=runtime, because Jellyfin
+        supplies them at runtime. The test host has no Jellyfin around it, so it needs
+        the actual assemblies. Keep the versions equal to the plugin's.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion)" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion)" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Jellyfin.Plugin.SsoAuthentication\Jellyfin.Plugin.SsoAuthentication.csproj" />
+  </ItemGroup>
+
+</Project>

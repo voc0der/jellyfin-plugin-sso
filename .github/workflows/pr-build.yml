@@ -1,79 +1,71 @@
 name: PR Develop Build
 
+# An installable archive of every pull request, for trying it on a server before it merges.
+#
+# It runs in the pull request's own context: a read-only token, no secrets, and caches that main
+# never restores. It used to be started by hand with a pull request's number, which ran that
+# pull request's code in main's context instead, where it could have poisoned the npm caches the
+# test workflows restore on main.
 on:
   pull_request:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: Pull request number whose artifact build should be rerun
-        required: true
-        type: string
+    branches: [ main ]
 
 permissions:
   contents: read
 
-jobs:
-  rerun-pr:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      contents: read
-      pull-requests: read
-    steps:
-      # Running PR code in a dispatch on main would give that code access to
-      # main's Actions cache namespace, even with a read-only repository token.
-      # Rerun its pull_request workflow instead; this job never checks out code.
-      - name: Rerun the current PR artifact build
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-        run: |
-          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-            echo "pr_number must be a positive integer" >&2
-            exit 1
-          fi
-          sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)
-          runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/pr-build.yml/runs?event=pull_request&head_sha=${sha}&per_page=100")
-          run=$(jq -r '.workflow_runs | first | .id // empty' <<< "$runs")
-          status=$(jq -r '.workflow_runs | first | .status // empty' <<< "$runs")
-          if [ -z "$run" ]; then
-            echo "No artifact workflow exists for the current PR commit. Open or update the PR first." >&2
-            exit 1
-          fi
-          if [ "$status" = completed ]; then
-            gh run rerun "$run" --repo "$GITHUB_REPOSITORY"
-          fi
-          echo "PR build: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run}" >> "$GITHUB_STEP_SUMMARY"
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
+jobs:
   build-pr:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
+
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
-        with:
-          global-json-file: global.json
-      - run: dotnet restore --locked-mode
-      - name: Publish development build
-        run: >-
-          dotnet publish SSO-Auth/SSO-Auth.csproj --configuration Release --no-restore
-          --output artifacts/publish -p:InformationalVersion="pr/${PR_NUMBER}"
-      - name: Package development build
-        run: >-
-          python3 scripts/plugin.py package --version 0.0.0.0
-          --build-tag "pr/${PR_NUMBER}"
-          --output "artifacts/SSO_Authentication_pr-${PR_NUMBER}.zip"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: SSO-Authentication-pr-${{ env.PR_NUMBER }}
-          path: artifacts/*.zip*
-          if-no-files-found: error
-          retention-days: 14
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Set build metadata
+      shell: bash
+      run: |
+        BUILD_TAG="pr/${PR_NUMBER}"
+        FOLDER_NAME="SSO_Authentication_pr-${PR_NUMBER}_develop"
+        ZIP_NAME="${FOLDER_NAME}.zip"
+
+        echo "BUILD_TAG=${BUILD_TAG}" >> "$GITHUB_ENV"
+        echo "FOLDER_NAME=${FOLDER_NAME}" >> "$GITHUB_ENV"
+        echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+
+    # build.sh runs the tests and checks the archive holds only what the plugin ships.
+    # BUILD_TAG lands in the archive as BUILD_TAG.txt, so an installed build says which
+    # pull request it came from.
+    - name: Build and package PR
+      shell: bash
+      run: |
+        ./build.sh
+        mv artifacts/SSO_Authentication_*.zip "${ZIP_NAME}"
+
+    - name: Upload zip artifact
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: "${{ env.FOLDER_NAME }}"
+        path: "${{ env.ZIP_NAME }}"
+        if-no-files-found: error
+
+    - name: Build summary
+      shell: bash
+      run: |
+        {
+          echo "### PR develop build complete"
+          echo ""
+          echo "- PR: #${PR_NUMBER}"
+          echo "- Build tag: \`${BUILD_TAG}\`"
+          echo "- Artifact: \`${ZIP_NAME}\`"
+        } >> "$GITHUB_STEP_SUMMARY"

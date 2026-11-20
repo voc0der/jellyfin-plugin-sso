@@ -1,3 +1,10 @@
-name: SSO CodeQL config
+name: "SSO Authentication CodeQL config"
+
+# No paths-ignore here: it only applies to code analyzed without a build, and the C# job
+# builds (build-mode: manual), so it never kept CodeQL out of obj/. Build intermediates
+# are filtered out of the SARIF in .github/workflows/codeql.yml instead.
+#
+# The JavaScript job does read Views/jellyfin-apiClient.esm.min.js, a vendored jsDelivr
+# bundle of jellyfin-apiclient 1.10.0. Its alerts are upstream's.
 queries:
   - uses: security-and-quality
