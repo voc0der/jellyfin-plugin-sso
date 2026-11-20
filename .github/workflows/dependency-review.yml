@@ -40,6 +40,6 @@ jobs:
           node-version: 24
       # Directory.Build.props makes high/critical NuGet advisories fatal,
       # including transitive packages. Run weekly even without source changes.
-      - run: dotnet restore --locked-mode --force-evaluate
+      - run: dotnet restore --locked-mode --force
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high

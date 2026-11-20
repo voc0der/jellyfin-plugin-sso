@@ -67,8 +67,8 @@ Once a release is published, add this repository URL under **Dashboard > Plugins
 https://raw.githubusercontent.com/voc0der/jellyfin-plugin-sso/main/manifest.json
 ```
 
-The combined [plugin repository](https://github.com/voc0der/jellyfin-plugins) can also
-serve this plugin once its source is registered there. Use only one catalogue source.
+This plugin is also registered in the combined [plugin repository](https://github.com/voc0der/jellyfin-plugins).
+Published releases will appear there automatically. Use only one catalogue source.
 
 This fork retains upstream's plugin GUID. It replaces the original SSO plugin;
 do not install both or keep both repositories enabled. Back up your SSO configuration
