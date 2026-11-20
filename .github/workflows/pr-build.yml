@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Pull request number to build
+        description: Pull request number whose artifact build should be rerun
         required: true
         type: string
 
@@ -14,24 +14,50 @@ permissions:
   contents: read
 
 jobs:
-  build-pr:
+  rerun-pr:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Check out the requested PR
-        if: github.event_name == 'workflow_dispatch'
+      # Running PR code in a dispatch on main would give that code access to
+      # main's Actions cache namespace, even with a read-only repository token.
+      # Rerun its pull_request workflow instead; this job never checks out code.
+      - name: Rerun the current PR artifact build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
             echo "pr_number must be a positive integer" >&2
             exit 1
           fi
-          git fetch origin "pull/${PR_NUMBER}/head"
-          git checkout --detach FETCH_HEAD
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)
+          runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/pr-build.yml/runs?event=pull_request&head_sha=${sha}&per_page=100")
+          run=$(jq -r '.workflow_runs | first | .id // empty' <<< "$runs")
+          status=$(jq -r '.workflow_runs | first | .status // empty' <<< "$runs")
+          if [ -z "$run" ]; then
+            echo "No artifact workflow exists for the current PR commit. Open or update the PR first." >&2
+            exit 1
+          fi
+          if [ "$status" = completed ]; then
+            gh run rerun "$run" --repo "$GITHUB_REPOSITORY"
+          fi
+          echo "PR build: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run}" >> "$GITHUB_STEP_SUMMARY"
+
+  build-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           global-json-file: global.json

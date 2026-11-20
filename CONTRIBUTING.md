@@ -54,7 +54,9 @@ MD5 checksums for Jellyfin's catalogue and SHA-256 checksums for manual verifica
 - **CodeQL** scans C#, JavaScript, and Actions using security and quality queries.
 - **Dependency Review** checks PR dependency changes and audits NuGet/npm weekly.
 - **PR Develop Build** publishes downloadable PR artifacts automatically; it also
-  accepts a PR number through workflow dispatch. It has no write permission or secrets.
+  accepts a PR number through workflow dispatch to rerun that PR's existing artifact
+  workflow. The build has no write permission or secrets. The dispatcher can rerun
+  Actions but never checks out code, keeping PR builds in their own cache namespace.
 - **Renovate** runs hourly, on main pushes, and when PR checks finish. Non-major
   updates wait three days and merge after checks pass. Major updates and Jellyfin
   packages require approval in the Dependency Dashboard.
@@ -76,8 +78,9 @@ Repository configuration:
 | `PLUGIN_REPO_TOKEN`        | Actions secret   | Dispatch access to the combined plugin repository |
 | `icon.png`                 | Root asset       | Plugin catalogue and README icon                  |
 
-The default Actions token has read permission. Only release publication and CodeQL
-uploads receive write permissions. Actions are pinned to commit hashes and updated
+The default Actions token has read permission. Release publication, CodeQL uploads,
+and the PR workflow dispatcher receive only their required write permissions.
+Actions are pinned to commit hashes and updated
 by Renovate. The Renovate workflow never checks out pull request code.
 
 The original plugin GUID is retained for replacement compatibility. Do not install
