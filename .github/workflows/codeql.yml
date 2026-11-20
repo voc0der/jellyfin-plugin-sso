@@ -26,6 +26,9 @@ jobs:
             build-mode: manual
           - language: javascript
             build-mode: none
+          # The workflows themselves: script injection, unpinned actions, untrusted checkouts.
+          - language: actions
+            build-mode: none
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
