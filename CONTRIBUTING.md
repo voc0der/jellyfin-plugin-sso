@@ -162,8 +162,8 @@ done
 - Describe what your PR changes and why
 - Merging to `main` does not publish anything by itself. Add the `release` label before merging to cut a new tag and release; unlabelled changes go out with the next labelled merge
 
-**PR Develop Build** (Actions) builds the archive for any pull request, by number, for testing on
-a server before it merges.
+**PR Develop Build** (Actions) builds the archive for every pull request, for testing on a server
+before it merges: it is attached to the pull request's run as `SSO_Authentication_pr-<number>_develop`.
 
 ## Release Metadata
 

@@ -1,44 +1,31 @@
 name: PR Develop Build
 
+# An installable archive of every pull request, for trying it on a server before it merges.
+#
+# It runs in the pull request's own context: a read-only token, no secrets, and caches that main
+# never restores. It used to be started by hand with a pull request's number, which ran that
+# pull request's code in main's context instead, where it could have poisoned the npm caches the
+# test workflows restore on main.
 on:
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: "Pull request number to build (example: 1)"
-        required: true
-        type: string
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   build-pr:
     runs-on: ubuntu-latest
 
-    # Bound to the job environment rather than interpolated into each run: block.
-    # A ${{ }} expression is substituted into the script text before bash sees it, so a
-    # crafted input would run as shell -- including inside the step meant to validate it.
     env:
-      PR_NUMBER: ${{ inputs.pr_number }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      with:
-        fetch-depth: 0
-
-    - name: Validate PR input
-      shell: bash
-      run: |
-        if ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
-          echo "Invalid pr_number input: ${PR_NUMBER}"
-          exit 1
-        fi
-
-    - name: Checkout PR branch
-      shell: bash
-      run: |
-        git fetch origin "pull/${PR_NUMBER}/head:pr-${PR_NUMBER}"
-        git checkout "pr-${PR_NUMBER}"
 
     - name: Setup .NET
       uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6

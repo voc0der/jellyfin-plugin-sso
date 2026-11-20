@@ -15,6 +15,7 @@ on:
       - Build and Release
       - CodeQL
       - Lint
+      - PR Develop Build
       - Settings page
       - Sign-in
     types: [completed]
