@@ -1,16 +1,29 @@
 import { expect, test } from './harness/fixtures.mjs';
 import {
     admin,
+    currentToken,
     currentUserId,
     emptyPasswordSignIn,
     jellyfinUser,
+    passwordSignIn,
+    quickConnectSignIn,
     signInAsAdmin,
     signInAtAuthelia,
     signInWithPassword,
     signInWithSso,
     stack
 } from './harness/session.mjs';
-import { EXPOSED_USER, JELLYFIN_URL, LOCAL_USER, PICTURE_PATH, PLUGIN_ID, PROVIDER } from './harness/stack.mjs';
+import {
+    ADMIN,
+    EXPOSED_USER,
+    JELLYFIN_URL,
+    LOCAL_USER,
+    PICTURE_PATH,
+    PLUGIN_ID,
+    PROVIDER,
+    jellyfinLogs,
+    restartJellyfin
+} from './harness/stack.mjs';
 
 // Accounts carry this as their authentication provider when sign-in created them: it keeps
 // them from signing in with a password.
@@ -148,4 +161,54 @@ test('an account with a password links its Authelia identity and then signs in w
     await signInWithSso(page, 'dave');
     expect(await currentUserId(page)).toBe(localUserId);
     expect(await jellyfinUser('dave')).toBeUndefined();
+});
+
+// Last, because each makes Jellyfin's container again, as an admin changing the variable in a
+// Compose file does: same data, new environment.
+test.describe('JELLYFIN_ENABLE_PASSWORD_LOGIN', () => {
+    test('false refuses every password, right or wrong, and signs no one out', async () => {
+        await restartJellyfin({ JELLYFIN_ENABLE_PASSWORD_LOGIN: 'false' });
+
+        expect(await passwordSignIn(ADMIN.name, ADMIN.password)).toBe(403);
+        expect(await passwordSignIn(LOCAL_USER.name, LOCAL_USER.password)).toBe(403);
+        expect(await passwordSignIn(LOCAL_USER.name, 'not-erins-password')).toBe(403);
+
+        // The plugin refused them, and said why: Jellyfin itself never answers a password 403.
+        // Polled, because Jellyfin writes its log in the background.
+        await expect.poll(jellyfinLogs).toContain('Password sign-in is off: JELLYFIN_ENABLE_PASSWORD_LOGIN is false');
+        await expect.poll(async () => (await jellyfinLogs()).match(/Refused a password sign-in from /g)?.length).toBe(3);
+
+        // The harness's admin session was signed in with a password, before.
+        expect((await admin('GET', '/Users/Me')).Name).toBe(ADMIN.name);
+    });
+
+    test('false has Jellyfin Web tell someone with a password to ask the administrator', async ({ page }) => {
+        await page.goto(`${JELLYFIN_URL}/web/`);
+        await page.locator('#txtManualName').fill(LOCAL_USER.name);
+        await page.locator('#txtManualPassword').fill(LOCAL_USER.password);
+        await page.locator('#txtManualPassword').press('Enter');
+
+        // What Jellyfin Web says for 403. For 401 it would say the password is wrong, which it is not.
+        await expect(page.getByText('You are not authorized to access the server at this time')).toBeVisible();
+        expect(page.url()).not.toMatch(/#\/home/);
+        expect(await currentUserId(page)).toBeNull();
+    });
+
+    test('false leaves sign-in through the provider, and Quick Connect approved from it', async ({ page }) => {
+        await signInWithSso(page, 'carol');
+        const carol = await jellyfinUser('carol');
+        expect(await currentUserId(page)).toBe(carol.Id);
+
+        // A TV app, say, approved from the browser that signed in through the provider.
+        expect(await quickConnectSignIn(await currentToken(page))).toEqual({ status: 200, userId: carol.Id });
+    });
+
+    test('unset again, passwords sign in as before', async () => {
+        await restartJellyfin();
+
+        expect(await passwordSignIn(ADMIN.name, ADMIN.password)).toBe(200);
+        expect(await passwordSignIn(LOCAL_USER.name, LOCAL_USER.password)).toBe(200);
+        expect(await passwordSignIn(LOCAL_USER.name, 'not-erins-password')).toBe(401);
+        expect(await jellyfinLogs()).not.toContain('Password sign-in is off');
+    });
 });

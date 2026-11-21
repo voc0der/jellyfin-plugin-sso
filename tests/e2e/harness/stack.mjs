@@ -10,6 +10,7 @@
 import { execFile } from 'node:child_process';
 import { generateKeyPairSync, pbkdf2Sync, randomBytes } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { request } from 'node:https';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -63,6 +64,12 @@ const JELLYFIN = 'sso-e2e-jellyfin';
 const AUTHELIA = 'sso-e2e-authelia';
 const PROXY = 'sso-e2e-proxy';
 export const CONTAINERS = [JELLYFIN, AUTHELIA, PROXY];
+
+// Jellyfin's data, in named volumes so the container can be made again with another environment
+// and keep its accounts, sessions and plugin, as an admin changing a Compose file would.
+const JELLYFIN_VOLUMES = { '/config': 'sso-e2e-jellyfin-config', '/cache': 'sso-e2e-jellyfin-cache' };
+export const VOLUMES = Object.values(JELLYFIN_VOLUMES);
+
 const CLIENT_AUTH = 'MediaBrowser Client="SSO harness", Device="harness", DeviceId="sso-e2e", Version="1.0.0"';
 
 async function docker(...args) {
@@ -351,6 +358,9 @@ async function logsOf(name, lines) {
         .catch(() => '');
 }
 
+// What the running Jellyfin container has logged since it was made.
+export const jellyfinLogs = () => logsOf(JELLYFIN);
+
 export async function stopStack({ logDir } = {}) {
     if (logDir) {
         await mkdir(logDir, { recursive: true });
@@ -363,7 +373,57 @@ export async function stopStack({ logDir } = {}) {
     }
 
     await docker('rm', '-f', '-v', ...CONTAINERS).catch(() => {});
+    await docker('volume', 'rm', ...VOLUMES).catch(() => {});
     await docker('network', 'rm', NETWORK).catch(() => {});
+}
+
+// Jellyfin's container, not yet started. The harness CA is in /config, and SSL_CERT_FILE makes
+// .NET trust it, and only it, for the plugin's calls to Authelia.
+async function createJellyfin({ port = '', environment = {} } = {}) {
+    const volumes = Object.entries(JELLYFIN_VOLUMES).flatMap(([path, volume]) => ['--volume', `${volume}:${path}`]);
+    const variables = Object.entries(environment).flatMap(([name, value]) => ['-e', `${name}=${value}`]);
+    await docker('create', '--name', JELLYFIN, '--network', NETWORK, '--network-alias', 'jellyfin',
+        '--publish', `127.0.0.1:${port}:8096`, ...volumes,
+        '-e', 'TZ=UTC', '-e', 'SSL_CERT_FILE=/config/sso-e2e-ca.crt', ...variables, JELLYFIN_IMAGE);
+}
+
+// A booting Jellyfin first answers with a placeholder, then 503, then the real thing.
+async function jellyfinUp(base) {
+    await waitFor(() => jsonUp(`${base}/System/Info/Public`, body => 'Version' in body), 180_000, 'Jellyfin', JELLYFIN).catch(async error => {
+        throw new Error(`${error.message}\n${await logsOf(JELLYFIN, 60)}`);
+    });
+}
+
+// What the browser gets from Jellyfin through the proxy, asked the way the browser asks.
+function throughProxy(proxyPort, path) {
+    return new Promise((done, fail) => {
+        const host = new URL(JELLYFIN_URL).hostname;
+        const call = request({ host: '127.0.0.1', port: proxyPort, path, servername: host, headers: { Host: host }, rejectUnauthorized: false }, response => {
+            response.resume();
+            done(response.statusCode === 200 || `${response.statusCode} through the proxy`);
+        });
+        call.on('error', fail);
+        call.end();
+    });
+}
+
+// Makes Jellyfin's container again with this environment on top of the harness's own, on the same
+// port and with the same data, and waits until it answers directly and through the proxy. Docker
+// cannot change a container's environment, so turning a variable on and off is this, as it is with
+// Compose: a clean stop, then a new container. The new container can come up at a new address,
+// which the proxy has to look up again.
+export async function restartJellyfin(environment = {}) {
+    const port = (await docker('port', JELLYFIN, '8096/tcp')).split('\n')[0].split(':').pop();
+    const proxyPort = (await docker('port', PROXY, '443/tcp')).split('\n')[0].split(':').pop();
+
+    await docker('stop', JELLYFIN);
+    await docker('rm', JELLYFIN);
+    await createJellyfin({ port, environment });
+    await docker('start', JELLYFIN);
+
+    await jellyfinUp(`http://127.0.0.1:${port}`);
+    await docker('exec', PROXY, 'nginx', '-s', 'reload');
+    await waitFor(() => throughProxy(proxyPort, '/System/Info/Public'), 30_000, 'Jellyfin through the proxy');
 }
 
 // The provider as an admin would add it, following the Authelia section of providers.md.
@@ -427,14 +487,12 @@ export async function startStack() {
         + '&& unset SSO_E2E_NGINX SSO_E2E_CERT SSO_E2E_KEY && exec nginx -g "daemon off;"');
 
     // Jellyfin's /config is a volume, which can be copied into before the first start. The
-    // harness CA goes there too, and SSL_CERT_FILE makes .NET trust it, and only it, for the
-    // plugin's calls to Authelia.
+    // harness CA goes there too.
     const trust = join(plugins, '..', 'trust');
     await rm(trust, { recursive: true, force: true });
     await mkdir(trust, { recursive: true });
     await writeFile(join(trust, 'sso-e2e-ca.crt'), ca);
-    await docker('create', '--name', JELLYFIN, '--network', NETWORK, '--network-alias', 'jellyfin',
-        '--publish', '127.0.0.1::8096', '-e', 'TZ=UTC', '-e', 'SSL_CERT_FILE=/config/sso-e2e-ca.crt', JELLYFIN_IMAGE);
+    await createJellyfin();
     await dockerCopy(plugins, `${JELLYFIN}:/config/`);
     await dockerCopy(join(trust, 'sso-e2e-ca.crt'), `${JELLYFIN}:/config/sso-e2e-ca.crt`);
     await docker('start', JELLYFIN);
@@ -451,10 +509,7 @@ export async function startStack() {
         throw new Error(`${error.message}\n${await logsOf(AUTHELIA, 40)}`);
     });
 
-    // A booting Jellyfin first answers with a placeholder, then 503, then the real thing.
-    await waitFor(() => jsonUp(`${base}/System/Info/Public`, body => 'Version' in body), 180_000, 'Jellyfin', JELLYFIN).catch(async error => {
-        throw new Error(`${error.message}\n${await logsOf(JELLYFIN, 60)}`);
-    });
+    await jellyfinUp(base);
     let info = await jellyfin(base, 'GET', '/System/Info/Public');
     if (!info.StartupWizardCompleted) {
         await waitFor(() => jsonUp(`${base}/Startup/Configuration`, () => true), 120_000, 'the Jellyfin wizard');
