@@ -22,6 +22,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const HARNESS_ROOT = resolve(HERE, '..');
 export const REPO_ROOT = resolve(HARNESS_ROOT, '../..');
 
+// Where each run's throwaway CA and the certificate it signs for *.sso.test go.
+const CERTIFICATES = join(HARNESS_ROOT, '.build', 'certs');
+
 // The newest Jellyfin release: sign-in has to work on what people run.
 export const JELLYFIN_IMAGE = process.env.JELLYFIN_IMAGE ?? 'jellyfin/jellyfin:12.4';
 export const AUTHELIA_IMAGE = process.env.AUTHELIA_IMAGE ?? 'authelia/authelia:4.39';
@@ -394,11 +397,13 @@ async function jellyfinUp(base) {
     });
 }
 
-// What the browser gets from Jellyfin through the proxy, asked the way the browser asks.
-function throughProxy(proxyPort, path) {
+// What the browser gets from Jellyfin through the proxy, asked the way the browser asks: by name,
+// with the proxy's certificate checked against the harness CA that signed it.
+async function throughProxy(proxyPort, path) {
+    const ca = await readFile(join(CERTIFICATES, 'ca.crt'));
+    const host = new URL(JELLYFIN_URL).hostname;
     return new Promise((done, fail) => {
-        const host = new URL(JELLYFIN_URL).hostname;
-        const call = request({ host: '127.0.0.1', port: proxyPort, path, servername: host, headers: { Host: host }, rejectUnauthorized: false }, response => {
+        const call = request({ host: '127.0.0.1', port: proxyPort, path, servername: host, headers: { Host: host }, ca }, response => {
             response.resume();
             done(response.statusCode === 200 || `${response.statusCode} through the proxy`);
         });
@@ -457,7 +462,7 @@ export async function startStack() {
     const build = join(HARNESS_ROOT, '.build');
     await mkdir(build, { recursive: true });
     const plugins = await stagePlugin(build);
-    const certs = await makeCertificates(join(build, 'certs'));
+    const certs = await makeCertificates(CERTIFICATES);
 
     const ca = await readFile(certs.caCrt);
     await stopStack();

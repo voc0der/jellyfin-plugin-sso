@@ -45,10 +45,11 @@ internal static class PasswordSignIn
         }
         else if (!string.IsNullOrWhiteSpace(value) && !bool.TryParse(value, out _))
         {
+            // Not the value itself: a variable named for passwords is treated as a secret, and
+            // Jellyfin already logs every JELLYFIN_ variable when it starts.
             logger.LogWarning(
-                "{Variable} is {Value}, which is neither true nor false; password sign-in stays on",
-                EnvironmentVariable,
-                value);
+                "{Variable} is set to neither true nor false; password sign-in stays on",
+                EnvironmentVariable);
         }
     }
 }

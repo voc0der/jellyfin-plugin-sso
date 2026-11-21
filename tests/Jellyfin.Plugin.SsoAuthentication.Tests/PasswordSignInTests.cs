@@ -139,9 +139,8 @@ public sealed class PasswordSignInTests
         Assert.Contains("SSO/OID/Auth/{provider}", routes);
         Assert.Contains("SSO/SAML/Auth/{provider}", routes);
 
-        foreach (var route in routes)
+        foreach (var context in routes.Select(Request))
         {
-            var context = Request(route);
             new PasswordSignInFilter(new RecordingLogger<PasswordSignInFilter>()).OnResourceExecuting(context);
             Assert.Null(context.Result);
         }
@@ -182,7 +181,7 @@ public sealed class PasswordSignInTests
 
         var (level, message) = Assert.Single(log.Entries);
         Assert.Equal(LogLevel.Warning, level);
-        Assert.Equal("JELLYFIN_ENABLE_PASSWORD_LOGIN is off, which is neither true nor false; password sign-in stays on", message);
+        Assert.Equal("JELLYFIN_ENABLE_PASSWORD_LOGIN is set to neither true nor false; password sign-in stays on", message);
     }
 
     [Theory]
