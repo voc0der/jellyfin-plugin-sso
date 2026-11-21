@@ -93,7 +93,7 @@ async function open(tab, address) {
 
 // Jellyfin Web's session, as it keeps it; "" when it has none.
 async function keepSession(tab, token) {
-    if (!tab.url().startsWith(ORIGIN)) {
+    if (new URL(tab.url()).origin !== ORIGIN) {
         await tab.goto(`${ORIGIN}/blank`);
     }
 
@@ -377,6 +377,64 @@ test('without the address, the script does nothing', async () => {
     }
 });
 
+test('a start attribute cannot execute script or choose an arbitrary destination', async () => {
+    for (const value of [
+        'javascript:window.ssoInjected=true',
+        'JaVaScRiPt:window.ssoInjected=true',
+        '&#106;avascript:window.ssoInjected=true',
+        'data:text/html,unsafe',
+        '//elsewhere.test/path',
+        `${ORIGIN}.elsewhere.test/sso/OID/start/authelia`,
+        '../sso/LDAP/start/authelia',
+        '../sso/OID/start/%ZZ',
+        '../sso/OID/start/%FF',
+        '../sso/OID/start/%2e%2e',
+        '../sso/OID/start/.'
+    ]) {
+        const tag = `<script defer src="../SSOViews/auto-sign-in.js" data-sso-auto-sign-in="${value}"></script>`;
+        const { context, tab, errors } = await browse({ page: jellyfinWeb(tag) });
+        try {
+            assert.equal(await open(tab, '/web/'), false, value);
+            assert.equal(tab.url(), `${ORIGIN}/web/`, value);
+            assert.equal(await tab.evaluate(() => window.ssoInjected), undefined, value);
+            assert.deepEqual(await notes(tab), { signedOut: null, tried: null }, value);
+            assert.deepEqual(errors, [], value);
+        } finally {
+            await context.close();
+        }
+    }
+});
+
+test('both protocols keep escaped provider names in one segment under a base path', async () => {
+    for (const protocol of ['OID', 'SAML']) {
+        const provider = 'Home%20Media%2F%C3%BC%3F';
+        const tag = `<script defer src="../SSOViews/auto-sign-in.js" data-sso-auto-sign-in="../sso/${protocol}/start/${provider}"></script>`;
+        const { context, tab, errors } = await browse({ basePath: '/media', page: jellyfinWeb(tag) });
+        try {
+            await tab.goto(`${ORIGIN}/media/web/`, { waitUntil: 'commit' });
+            await tab.waitForURL(`${ORIGIN}/media/sso/${protocol}/start/${provider}`);
+            assert.deepEqual(errors, []);
+        } finally {
+            await context.close();
+        }
+    }
+});
+
+test('session setup checks the origin instead of a hostname prefix', async () => {
+    const { context, tab } = await browse();
+    try {
+        for (const address of [`${ORIGIN}.elsewhere.test/blank`, `${ORIGIN}:8080/blank`]) {
+            await tab.goto(address);
+            await keepSession(tab, 'test-session');
+            assert.equal(tab.url(), `${ORIGIN}/blank`);
+            await tab.goto(address);
+            assert.equal(await tab.evaluate(() => localStorage.getItem('jellyfin_credentials')), null);
+        }
+    } finally {
+        await context.close();
+    }
+});
+
 test('unreadable notes and sessions count as none', async () => {
     const { context, tab, errors } = await browse();
     try {
@@ -431,5 +489,23 @@ test('a manual sign-in error stays readable, including after an earlier complete
         assert.deepEqual(errors, []);
     } finally {
         await context.close();
+    }
+});
+
+test('a fallback attribute is only a marker for the fixed local login page', async () => {
+    for (const value of ['javascript:window.ssoInjected=true', '//elsewhere.test/path']) {
+        const failure = '<!doctype html><head><title>Sign-in failed</title>'
+            + `<script defer src="../../../SSOViews/auto-sign-in.js" data-sso-auto-fallback="${value}"></script>`
+            + '</head><body>Permission denied</body>';
+        const { context, tab, errors } = await browse({ basePath: '/media', failure });
+        try {
+            await tab.goto(`${ORIGIN}/media/web/`, { waitUntil: 'commit' });
+            await tab.waitForURL(`${ORIGIN}/media/web/index.html#/login`);
+            await tab.waitForFunction(() => window.startedAt);
+            assert.equal(await tab.evaluate(() => window.ssoInjected), undefined);
+            assert.deepEqual(errors, []);
+        } finally {
+            await context.close();
+        }
     }
 });

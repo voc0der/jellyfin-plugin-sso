@@ -302,9 +302,9 @@ internal sealed class AutoSignInMiddleware
         {
             configuration = SSOPlugin.Instance?.Configuration;
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            // Deliberately broad: settings that cannot be read are no reason for Jellyfin Web not to load.
+            // File access and XML deserialization failures should not prevent Jellyfin Web loading.
             Report("unreadable", () => _logger.LogError(e, "Automatic sign-in is off until the plugin's settings can be read"));
             return null;
         }

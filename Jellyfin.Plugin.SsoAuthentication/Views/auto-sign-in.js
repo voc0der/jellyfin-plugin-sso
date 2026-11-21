@@ -28,10 +28,33 @@
   "use strict";
 
   var script = document.currentScript;
-  var start = script && script.getAttribute("data-sso-auto-sign-in");
-  var fallback = script && script.getAttribute("data-sso-auto-fallback");
+  var start = script && parseStart(script.getAttribute("data-sso-auto-sign-in"));
+  var fallback = script && script.hasAttribute("data-sso-auto-fallback");
   if ((!start && !fallback) || window.top !== window.self) {
     return;
+  }
+
+  // The tag names a provider, not an arbitrary redirect. Rebuild only the local start route,
+  // keeping the provider in one encoded segment even if the attribute is changed in the DOM.
+  function parseStart(value) {
+    var parts = /^\.\.\/sso\/(OID|SAML)\/start\/(.+)$/.exec(value || "");
+    if (!parts) {
+      return null;
+    }
+
+    try {
+      var provider = decodeURIComponent(parts[2]);
+      if (provider === "." || provider === "..") {
+        return null;
+      }
+
+      return {
+        protocol: parts[1] === "SAML" ? "SAML" : "OID",
+        provider: encodeURIComponent(provider),
+      };
+    } catch (e) {
+      return null;
+    }
   }
 
   // In localStorage: this browser signed out, or opened the login page itself.
@@ -91,7 +114,8 @@
   if (fallback) {
     var attempt = read(session, TRIED);
     if (attempt && !attempt.back) {
-      window.location.replace(fallback);
+      // The attribute is only a marker: its text cannot choose another destination.
+      window.location.replace("../../../web/index.html#/login");
     }
 
     return;
@@ -148,9 +172,6 @@
   }
 
   function go(page) {
-    var link = document.createElement("a");
-    link.href = start;
-
     // Noted first: a tab that cannot note that it went could go round in circles.
     var noted = write(session, TRIED, {
       token: fingerprint(storedToken()),
@@ -158,7 +179,7 @@
       page: page,
     });
     if (noted) {
-      window.location.assign(link.href);
+      window.location.assign("../sso/" + start.protocol + "/start/" + start.provider);
     }
   }
 
