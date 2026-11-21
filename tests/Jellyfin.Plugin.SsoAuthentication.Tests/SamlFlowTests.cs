@@ -506,4 +506,62 @@ public sealed class SamlFlowTests : IDisposable
 
         Assert.EndsWith("&RelayState=linking", result.Url, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Unknown_and_disabled_saml_providers_cannot_start_sign_in(bool disabled)
+    {
+        Config.Enabled = !disabled;
+
+        Assert.Throws<ArgumentException>(() => _harness.Create().SamlChallenge(disabled ? "test" : "missing"));
+    }
+
+    [Fact]
+    public async Task The_management_role_enables_live_tv_management()
+    {
+        var created = AccountsCreatedOnSignIn();
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users", "live-tv-admins")));
+
+        var user = Assert.Single(created);
+        Assert.True(user.HasPermission(PermissionKind.EnableLiveTvManagement));
+        Assert.False(user.HasPermission(PermissionKind.EnableLiveTvAccess));
+    }
+
+    [Fact]
+    public async Task Null_optional_role_lists_do_not_grant_additional_access()
+    {
+        Config.AdminRoles = null;
+        Config.FolderRoleMapping = null;
+        Config.LiveTvRoles = null;
+        Config.LiveTvManagementRoles = null;
+        var created = AccountsCreatedOnSignIn();
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users", "jellyfin-admins", "kids", "live-tv", "live-tv-admins")));
+
+        var user = Assert.Single(created);
+        Assert.False(user.HasPermission(PermissionKind.IsAdministrator));
+        Assert.False(user.HasPermission(PermissionKind.EnableLiveTvAccess));
+        Assert.False(user.HasPermission(PermissionKind.EnableLiveTvManagement));
+        Assert.Empty(user.GetPreferenceValues<string>(PreferenceKind.EnabledFolders));
+    }
+
+    [Fact]
+    public async Task Static_live_tv_permissions_apply_without_role_mapping()
+    {
+        Config.EnableLiveTvRoles = false;
+        Config.EnableLiveTv = true;
+        Config.EnableLiveTvManagement = true;
+        Config.EnableFolderRoles = false;
+        Config.EnabledFolders = null;
+        var created = AccountsCreatedOnSignIn();
+
+        await _harness.Create().SamlAuth("test", FromBrowser(SignedResponse("alice", "jellyfin-users")));
+
+        var user = Assert.Single(created);
+        Assert.True(user.HasPermission(PermissionKind.EnableLiveTvAccess));
+        Assert.True(user.HasPermission(PermissionKind.EnableLiveTvManagement));
+        Assert.Empty(user.GetPreferenceValues<string>(PreferenceKind.EnabledFolders));
+    }
 }

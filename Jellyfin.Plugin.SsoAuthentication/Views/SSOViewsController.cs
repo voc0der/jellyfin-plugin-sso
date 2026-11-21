@@ -1,11 +1,9 @@
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model;
-using MediaBrowser.Model.Plugins;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
@@ -42,19 +40,12 @@ public class SSOViewsController : ControllerBase
 
     private ActionResult ServeView(string viewName)
     {
-        IEnumerable<PluginPageInfo> pages = null;
         if (SSOPlugin.Instance == null)
         {
             return BadRequest("No plugin instance found");
         }
 
-        pages = SSOPlugin.Instance.GetViews();
-
-        if (pages == null)
-        {
-            return NotFound("Pages is null or empty");
-        }
-
+        var pages = SSOPlugin.Instance.GetViews();
         var view = pages.FirstOrDefault(pageInfo => pageInfo.Name == viewName, null);
 
         if (view == null)

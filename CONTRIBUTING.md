@@ -52,6 +52,12 @@ importing a settings file in the format 9p4's 4.0.0.4 writes, and which values o
 Jellyfin 12's does where that matters: a lookup returns a fresh copy of the account, so a change
 only counts once it is saved.
 
+The OpenID flow tests use an in-memory HTTP provider with discovery, signed ID tokens, and
+userinfo responses. They run the real Duende client through PKCE and token exchange, role and
+username claims, linking, session creation, and provider failures without a listening port or
+external service. The suite also checks SAML attribute aliases, XML dictionary behavior and
+configuration import failures.
+
 `tests/config-page` loads the settings page in a browser against a stubbed `ApiClient` and checks
 that saving keeps what the page does not show, account links above all.
 
@@ -62,38 +68,38 @@ proxy in between, and of a standards-following provider's answers. Run it after 
 
 ## Coverage
 
-The coverage badge in the README is a **manually updated** number, measured the same way as the
-other plugins in this family: coverlet's overall line rate of a Release test run, with no
-exclusions. It covers the C# only. Refresh it in the same commit as any change that moves it
-meaningfully.
+CI requires **100% C# line coverage** from a Release test run with coverlet and no
+exclusions. It uploads the Cobertura report as `csharp-coverage`, and prints line and branch
+coverage separately. The README badge is still **manually updated**; refresh it in the same
+commit as any change that moves the rounded percentage meaningfully. JavaScript and browser
+coverage are not part of this number.
 
 ```bash
+# Use a fresh directory so an earlier report cannot accidentally satisfy the check.
+coverage_dir=$(mktemp -d)
 dotnet test tests/Jellyfin.Plugin.SsoAuthentication.Tests \
   --configuration Release \
   --collect:"XPlat Code Coverage" \
-  --results-directory /tmp/sso-coverage
+  --results-directory "$coverage_dir"
+python3 scripts/check-coverage.py "$coverage_dir"
 ```
 
-The badge number is the top-level `line-rate` attribute of the `coverage.cobertura.xml` written
-under that directory, as a percentage, rounded to the nearest whole number:
+The gate uses the report's top-level `lines-covered` and `lines-valid` counts, without rounding,
+so even one uncovered line fails. The badge rounds that percentage to the nearest whole number. Missing,
+empty, invalid or multiple reports fail the check. The gate's own tests run with:
 
 ```bash
-python3 - <<'EOF'
-import glob, xml.etree.ElementTree as ET
-report = glob.glob("/tmp/sso-coverage/**/coverage.cobertura.xml", recursive=True)[0]
-root = ET.parse(report).getroot()
-rate = float(root.get("line-rate")) * 100
-print("line-rate %.2f%% (%s/%s lines) -> badge %d%%" % (
-    rate, root.get("lines-covered"), root.get("lines-valid"), round(rate)))
-EOF
+python3 -B -m unittest discover -s tests/coverage
 ```
 
 Badge colours: `brightgreen` at or above 95, `green` under 95, `yellowgreen` under 85, `yellow`
 under 75, `orange` under 60.
 
 The page `WebResponse.cs` generates is one string the tests render whole, so its nearly 500 lines
-all count as covered: without that file, the rate is about 12 points lower. The OpenID paths of
-`SSOController` that need a provider to answer are covered by `tests/e2e`, not by this number.
+all count as covered. This does not measure execution of the generated JavaScript; the browser
+suites check the settings page and real sign-in behavior separately. Line coverage and branch
+coverage are different: executing every line does not necessarily exercise every outcome of
+each condition. Branch coverage is reported but is not subject to the 100% line coverage gate.
 
 ## Plugin GUID Safety
 
