@@ -25,7 +25,7 @@ internal sealed class FuzzCampaign(ITestOutputHelper output)
             {
                 var directory = Environment.GetEnvironmentVariable("FUZZ_ARTIFACTS") ?? "artifacts/fuzz";
                 Directory.CreateDirectory(directory);
-                var path = Path.GetFullPath(Path.Combine(directory, target + ".json"));
+                var path = Path.GetFullPath(Path.Join(directory, target + ".json"));
                 File.WriteAllText(path, JsonSerializer.Serialize(new
                 {
                     Target = target,
