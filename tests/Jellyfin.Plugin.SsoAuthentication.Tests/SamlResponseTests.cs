@@ -59,6 +59,31 @@ public sealed class SamlResponseTests : IDisposable
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("#")]
+    [InlineData("X_response")]
+    public void A_signature_whose_reference_is_not_to_an_id_is_refused(string? uri)
+    {
+        // SAML signs a reference to the signed element's ID, as "#" and the ID. Without a URI,
+        // or with an empty ID, the check used to throw instead of refusing the response, and
+        // without the "#" it read the rest as an ID.
+        var document = new XmlDocument { PreserveWhitespace = true };
+        document.LoadXml(_idp.Sign(SamlIdentityProvider.Unsigned("alice")));
+        var reference = (XmlElement)document.GetElementsByTagName("Reference", "http://www.w3.org/2000/09/xmldsig#")[0]!;
+        if (uri is null)
+        {
+            reference.RemoveAttribute("URI");
+        }
+        else
+        {
+            reference.SetAttribute("URI", uri);
+        }
+
+        Assert.False(Load(document.OuterXml).IsValid());
+    }
+
+    [Theory]
     [InlineData("missing-date")]
     [InlineData("missing-confirmation")]
     [InlineData("invalid-date")]

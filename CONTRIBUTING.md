@@ -33,8 +33,8 @@ against, and the plugin GUID. Everything else reads them from there.
 
 ## Testing
 
-Three layers, all run by CI. The settings page and sign-in harnesses only run for changes that
-can affect them.
+Three layers, all run by CI. The settings page and sign-in harnesses, and the fuzz campaigns,
+only run for changes that can affect them.
 
 ```bash
 dotnet test --configuration Release
@@ -65,6 +65,43 @@ that saving keeps what the page does not show, account links above all.
 makes. It is the only test of what Jellyfin Web does with the session the plugin hands it, of the
 proxy in between, and of a standards-following provider's answers. Run it after any change under
 `Jellyfin.Plugin.SsoAuthentication/`; see [tests/e2e/README.md](tests/e2e/README.md).
+
+## Authentication fuzzing
+
+`SecurityFuzzTests` feeds the SAML parser and the sign-in and linking endpoints malformed, forged
+and tampered inputs: mutations of broken Base64 and XML, injection strings, Unicode and long
+values, and of signed SAML responses. A signature from anyone but the configured certificate
+must not validate, and a signed response that still validates after a mutation must name the
+same user with the same roles. Tampered SAML, OpenID states that were never issued or never
+validated, and requests to change another user's links must be refused without creating an
+account, a session or a link. Valid signed controls keep the parser from passing by refusing
+everything.
+
+Malformed SAML may make the parser throw `FormatException`, `XmlException` or
+`CryptographicException`; any other exception fails the test. Inputs are at most 32 KiB. These
+are seeded mutation tests of the real parser and controllers with Jellyfin's services
+substituted, not coverage-guided fuzzing: HTTP routing, middleware and the browser remain the
+sign-in harness's job.
+
+`dotnet test` runs 64 inputs per test. The **Fuzz pentest** workflow runs 2,000 per test for
+pull requests and pushes to `main` that change the plugin or its tests, 10,000 weekly, and on
+demand, in two campaigns: `regression`, always seed 7331, and `exploration`, a new seed each
+time. CI stops a test after two minutes and a job after 15.
+
+Each campaign uploads `fuzz-pentest-regression` or `fuzz-pentest-exploration`: its seed, the TRX
+results and, for a failure, a JSON file with the test, the iteration, the exact input in Base64
+and the signing certificate. The job summary has the command that replays the campaign:
+
+```bash
+FUZZ_SEED=7331 FUZZ_ITERATIONS=2000 FUZZ_ARTIFACTS="$PWD/artifacts/fuzz" \
+  dotnet test tests/Jellyfin.Plugin.SsoAuthentication.Tests --configuration Release \
+  --filter 'Category=Fuzz' --logger 'console;verbosity=normal'
+```
+
+The seed replays the same mutations, but the test signing keys are new on every run, so a
+failure in a signed response may need the saved input and certificate instead. When fixing a
+finding, keep its input as a test: in `FuzzInputs.Corpus`, or a test of its own, as
+`SamlResponseTests` has for signature references that are not `#` and an ID.
 
 ## Coverage
 
