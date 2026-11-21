@@ -5,20 +5,23 @@ name: Settings page
 # account links above all. A page whose Save drops every link builds, loads and passes every
 # unit test, so nothing else here would notice.
 #
-# Only for changes that can affect the page: its markup and script, the configuration class it
-# loads and saves, and the harness itself.
+# Also exercises automatic sign-in's session, logout, app and redirect-loop safeguards.
 
 on:
   pull_request:
     branches: [ main ]
     paths:
       - 'Jellyfin.Plugin.SsoAuthentication/Config/**'
+      - 'Jellyfin.Plugin.SsoAuthentication/Views/auto-sign-in.js'
+      - 'Jellyfin.Plugin.SsoAuthentication/Api/AutoSignIn.cs'
       - 'tests/config-page/**'
       - '.github/workflows/config-page.yml'
   push:
     branches: [ main ]
     paths:
       - 'Jellyfin.Plugin.SsoAuthentication/Config/**'
+      - 'Jellyfin.Plugin.SsoAuthentication/Views/auto-sign-in.js'
+      - 'Jellyfin.Plugin.SsoAuthentication/Api/AutoSignIn.cs'
       - 'tests/config-page/**'
       - '.github/workflows/config-page.yml'
   workflow_dispatch:

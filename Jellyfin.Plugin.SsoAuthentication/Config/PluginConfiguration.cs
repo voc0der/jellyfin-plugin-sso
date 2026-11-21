@@ -29,6 +29,23 @@ public class PluginConfiguration : MediaBrowser.Model.Plugins.BasePluginConfigur
     /// </summary>
     [XmlElement("OidConfigs")]
     public SerializableDictionary<string, OidConfig> OidConfigs { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether Jellyfin Web sends someone who is not signed in
+    /// straight to <see cref="AutoSignInProvider"/>, instead of showing its login page.
+    /// </summary>
+    public bool EnableAutoSignIn { get; set; }
+
+    /// <summary>
+    /// Gets or sets the name of the provider automatic sign-in sends people to.
+    /// </summary>
+    public string AutoSignInProvider { get; set; }
+
+    /// <summary>
+    /// Gets or sets what kind of provider <see cref="AutoSignInProvider"/> is: <c>OID</c>, which an
+    /// empty value means too, or <c>SAML</c>.
+    /// </summary>
+    public string AutoSignInProtocol { get; set; }
 }
 
 /// <summary>

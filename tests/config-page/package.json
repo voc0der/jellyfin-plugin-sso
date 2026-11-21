@@ -2,6 +2,6 @@
   "name": "sso-auth-config-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test config-page.test.mjs" },
+  "scripts": { "test": "node --test *.test.mjs" },
   "devDependencies": { "playwright": "1.63.0" }
 }

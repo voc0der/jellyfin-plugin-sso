@@ -59,7 +59,9 @@ external service. The suite also checks SAML attribute aliases, XML dictionary b
 configuration import failures.
 
 `tests/config-page` loads the settings page in a browser against a stubbed `ApiClient` and checks
-that saving keeps what the page does not show, account links above all.
+that saving keeps what the page does not show, account links above all. It also runs the automatic
+sign-in script against a simulated Jellyfin Web page, checking session reuse, explicit logout,
+failure recovery, redirect-loop prevention, app and frame detection, and restoring the requested page.
 
 `tests/e2e` signs in to a real Jellyfin 12 through a real Authelia, with the archive `build.sh`
 makes. It is the only test of what Jellyfin Web does with the session the plugin hands it, of the
@@ -175,7 +177,7 @@ Run lint checks locally before opening a PR:
 ```bash
 dotnet format whitespace --verify-no-changes
 dotnet format style --verify-no-changes --severity warn
-for script in Config/config.js Config/linking.js Views/apiClient.js; do
+for script in Config/config.js Config/linking.js Views/apiClient.js Views/auto-sign-in.js; do
   node --input-type=module --check < "Jellyfin.Plugin.SsoAuthentication/$script"
 done
 ```

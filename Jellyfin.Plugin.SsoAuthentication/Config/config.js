@@ -4,6 +4,7 @@ const ssoConfigurationPage = {
     ApiClient.getPluginConfiguration(ssoConfigurationPage.pluginUniqueId).then(
       (config) => {
         ssoConfigurationPage.populateProviders(page, config.OidConfigs);
+        ssoConfigurationPage.populateAutoSignIn(page, config);
       },
     );
 
@@ -25,6 +26,103 @@ const ssoConfigurationPage = {
       var choice = new Option(provider_name, provider_name);
 
       page.querySelector("#selectProvider").appendChild(choice);
+    });
+  },
+  // Every provider automatic sign-in can use, as "OID/name" or "SAML/name": the protocol has no
+  // slash, so the first one separates it from the name.
+  autoSignInChoices: (config) => {
+    const choices = [];
+    [
+      ["OID", "OpenID", config.OidConfigs],
+      ["SAML", "SAML", config.SamlConfigs],
+    ].forEach(([protocol, kind, providers]) => {
+      Object.keys(providers || {}).forEach((name) => {
+        const enabled = !!(providers[name] && providers[name].Enabled);
+        choices.push({
+          value: `${protocol}/${name}`,
+          label: `${name} (${kind}${enabled ? "" : ", disabled"})`,
+          enabled,
+        });
+      });
+    });
+    return choices;
+  },
+  parseAutoSignInChoice: (value) => {
+    const separator = value.indexOf("/");
+    return separator < 0
+      ? { protocol: null, provider: null }
+      : {
+          protocol: value.slice(0, separator),
+          provider: value.slice(separator + 1),
+        };
+  },
+  // Shows the saved choice when the page opens. Later, when saving a provider changes the list,
+  // whatever is chosen here and not yet saved stays chosen.
+  populateAutoSignIn: (page, config) => {
+    const select = page.querySelector("#AutoSignInProvider");
+    const opening = select.options.length === 0;
+    const saved = config.AutoSignInProvider
+      ? `${(config.AutoSignInProtocol || "OID").toUpperCase()}/${config.AutoSignInProvider}`
+      : "";
+    const wanted = opening ? saved : select.value;
+    const choices = ssoConfigurationPage.autoSignInChoices(config);
+
+    select.querySelectorAll("option").forEach((option) => option.remove());
+    select.appendChild(new Option("Choose a provider", ""));
+    choices.forEach((choice) => {
+      select.appendChild(new Option(choice.label, choice.value));
+    });
+    select.value = choices.some((choice) => choice.value === wanted)
+      ? wanted
+      : "";
+
+    if (opening) {
+      page.querySelector("#EnableAutoSignIn").checked =
+        !!config.EnableAutoSignIn;
+    }
+
+    // What the server does with the saved settings, which the log says too.
+    const unusable =
+      config.EnableAutoSignIn &&
+      !choices.some((choice) => choice.value === saved && choice.enabled);
+    const warning = page.querySelector("#AutoSignInUnusable");
+    warning.textContent = unusable
+      ? `Automatic sign-in is on, but ${config.AutoSignInProvider || "no provider"} is not an enabled provider, so Jellyfin Web shows its login page.`
+      : "";
+    warning.classList.toggle("hide", !unusable);
+  },
+  saveAutoSignIn: (page) => {
+    const enabled = page.querySelector("#EnableAutoSignIn").checked;
+    const { protocol, provider } = ssoConfigurationPage.parseAutoSignInChoice(
+      page.querySelector("#AutoSignInProvider").value,
+    );
+
+    return ApiClient.getPluginConfiguration(
+      ssoConfigurationPage.pluginUniqueId,
+    ).then((config) => {
+      const usable = ssoConfigurationPage
+        .autoSignInChoices(config)
+        .some(
+          (choice) => choice.value === `${protocol}/${provider}` && choice.enabled,
+        );
+      if (enabled && !usable) {
+        Dashboard.alert("Choose an enabled provider to sign in with.");
+        return;
+      }
+
+      // Turning it off keeps the provider, for turning it on again.
+      config.EnableAutoSignIn = enabled;
+      config.AutoSignInProvider = provider;
+      config.AutoSignInProtocol = protocol;
+
+      return ApiClient.updatePluginConfiguration(
+        ssoConfigurationPage.pluginUniqueId,
+        config,
+      ).then(function (result) {
+        Dashboard.processPluginConfigurationUpdateResult(result);
+        ssoConfigurationPage.populateAutoSignIn(page, config);
+        Dashboard.alert("Settings saved.");
+      });
     });
   },
   populateEnabledFolders: (folder_list, container) => {
@@ -372,6 +470,13 @@ export default function (view) {
     const target_provider = view.querySelector("#OidProviderName").value;
 
     ssoConfigurationPage.saveProvider(view, target_provider);
+
+    e.preventDefault();
+    return false;
+  });
+
+  view.querySelector("#SaveAutoSignIn").addEventListener("click", (e) => {
+    ssoConfigurationPage.saveAutoSignIn(view);
 
     e.preventDefault();
     return false;

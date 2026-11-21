@@ -35,7 +35,10 @@ public class SSOViewsController : ControllerBase
         _userManager = userManager;
         _authContext = authContext;
         _logger = logger;
-        _logger.LogInformation("SSO Views Controller initialized");
+
+        // Debug: a controller is made for each request, and with automatic sign-in on, every load
+        // of Jellyfin Web asks this one for its script.
+        _logger.LogDebug("SSO Views Controller initialized");
     }
 
     private ActionResult ServeView(string viewName)

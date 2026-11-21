@@ -58,7 +58,7 @@ jobs:
     # step, so a syntax error would otherwise only show up in a browser.
     - name: Check the page scripts parse
       run: |
-        for script in Config/config.js Config/linking.js Views/apiClient.js; do
+        for script in Config/config.js Config/linking.js Views/apiClient.js Views/auto-sign-in.js; do
           node --input-type=module --check < "Jellyfin.Plugin.SsoAuthentication/$script"
         done
 

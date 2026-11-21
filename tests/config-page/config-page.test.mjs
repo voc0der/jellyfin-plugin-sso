@@ -31,14 +31,17 @@ const configuration = () => ({
             FutureSetting: 'preserve-me'
         },
         other: { OidEndpoint: 'https://other.example.test', Enabled: false, CanonicalLinks: { bob: '5a4b3c2d1e0f4a9b8c7d6e5f4a3b2c1d' } }
-    }
+    },
+    EnableAutoSignIn: true,
+    AutoSignInProvider: 'authelia',
+    AutoSignInProtocol: 'OID'
 });
 
 let browser;
 before(async () => { browser = await chromium.launch({ headless: true }); });
 after(async () => { await browser?.close(); });
 
-async function load() {
+async function load(config = configuration()) {
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -66,7 +69,7 @@ async function load() {
             processPluginConfigurationUpdateResult: () => {},
             alert: text => window.alerts.push(text)
         };
-    }, { config: configuration(), pluginId: PLUGIN_ID });
+    }, { config, pluginId: PLUGIN_ID });
 
     // Jellyfin loads config.js as the page's controller: a module whose default export is
     // called with the page.
@@ -128,6 +131,9 @@ test('saving a provider keeps its account links and everything the page does not
         assert.equal(authelia.FutureSetting, 'preserve-me');
         assert.deepEqual(saved.OidConfigs.other, configuration().OidConfigs.other);
         assert.deepEqual(saved.SamlConfigs, configuration().SamlConfigs);
+        assert.equal(saved.EnableAutoSignIn, true);
+        assert.equal(saved.AutoSignInProvider, 'authelia');
+        assert.equal(saved.AutoSignInProtocol, 'OID');
         assert.deepEqual(await page.evaluate(() => window.alerts), ['Settings saved.']);
         assert.deepEqual(errors, []);
     } finally {
@@ -167,6 +173,7 @@ test('deleting a provider removes only that provider, once confirmed', async () 
         assert.deepEqual(Object.keys(saved.OidConfigs), ['authelia']);
         assert.deepEqual(saved.OidConfigs.authelia.CanonicalLinks, { alice: '8c1f4e2a9d3b4a6eb7c51e0f2d3c4b5a' });
         assert.deepEqual(saved.SamlConfigs, configuration().SamlConfigs);
+        assert.equal(saved.AutoSignInProvider, 'authelia');
         assert.deepEqual(errors, []);
     } finally {
         await page.close();
@@ -182,6 +189,128 @@ test('declining the confirmation deletes nothing', async () => {
         await page.waitForTimeout(300);
 
         assert.deepEqual(await page.evaluate(() => window.saved), []);
+    } finally {
+        await page.close();
+    }
+});
+
+// Automatic sign-in has a section of its own, saved on its own.
+
+const autoSignInOff = () => ({ ...configuration(), EnableAutoSignIn: false, AutoSignInProvider: null, AutoSignInProtocol: null });
+
+test('automatic sign-in lists every provider, with the saved one chosen', async () => {
+    const { page, errors } = await load({ ...configuration(), AutoSignInProvider: 'keycloak', AutoSignInProtocol: 'SAML' });
+    try {
+        assert.deepEqual(await page.$$eval('#AutoSignInProvider option', options => options.map(o => [o.value, o.textContent])), [
+            ['', 'Choose a provider'],
+            ['OID/authelia', 'authelia (OpenID)'],
+            ['OID/other', 'other (OpenID, disabled)'],
+            ['SAML/keycloak', 'keycloak (SAML)']
+        ]);
+        assert.equal(await page.inputValue('#AutoSignInProvider'), 'SAML/keycloak');
+        assert.equal(await page.isChecked('#EnableAutoSignIn'), true);
+        assert.equal(await page.$eval('#AutoSignInUnusable', element => element.classList.contains('hide')), true);
+        assert.deepEqual(errors, []);
+    } finally {
+        await page.close();
+    }
+});
+
+test('turning automatic sign-in on saves its provider and keeps everything else', async () => {
+    const { page, errors } = await load(autoSignInOff());
+    try {
+        assert.equal(await page.isChecked('#EnableAutoSignIn'), false);
+        assert.equal(await page.inputValue('#AutoSignInProvider'), '');
+
+        await page.selectOption('#AutoSignInProvider', 'SAML/keycloak');
+        await page.check('#EnableAutoSignIn', { force: true });
+        await page.click('#SaveAutoSignIn');
+        await page.waitForFunction(() => window.saved.length === 1);
+        const saved = await page.evaluate(() => window.saved[0]);
+
+        assert.equal(saved.EnableAutoSignIn, true);
+        assert.equal(saved.AutoSignInProvider, 'keycloak');
+        assert.equal(saved.AutoSignInProtocol, 'SAML');
+        assert.deepEqual(saved.OidConfigs, configuration().OidConfigs);
+        assert.deepEqual(saved.SamlConfigs, configuration().SamlConfigs);
+        assert.deepEqual(await page.evaluate(() => window.alerts), ['Settings saved.']);
+        assert.deepEqual(errors, []);
+    } finally {
+        await page.close();
+    }
+});
+
+test('automatic sign-in is not turned on without an enabled provider', async () => {
+    const { page, errors } = await load(autoSignInOff());
+    try {
+        await page.check('#EnableAutoSignIn', { force: true });
+        for (const choice of ['', 'OID/other']) {
+            await page.selectOption('#AutoSignInProvider', choice);
+            await page.click('#SaveAutoSignIn');
+        }
+        await page.waitForFunction(() => window.alerts.length === 2);
+
+        assert.deepEqual(await page.evaluate(() => window.alerts), [
+            'Choose an enabled provider to sign in with.',
+            'Choose an enabled provider to sign in with.'
+        ]);
+        assert.deepEqual(await page.evaluate(() => window.saved), []);
+        assert.deepEqual(errors, []);
+    } finally {
+        await page.close();
+    }
+});
+
+test('turning automatic sign-in off keeps its provider for next time', async () => {
+    const { page, errors } = await load();
+    try {
+        assert.equal(await page.inputValue('#AutoSignInProvider'), 'OID/authelia');
+
+        await page.uncheck('#EnableAutoSignIn', { force: true });
+        await page.click('#SaveAutoSignIn');
+        await page.waitForFunction(() => window.saved.length === 1);
+        const saved = await page.evaluate(() => window.saved[0]);
+
+        assert.equal(saved.EnableAutoSignIn, false);
+        assert.equal(saved.AutoSignInProvider, 'authelia');
+        assert.equal(saved.AutoSignInProtocol, 'OID');
+        assert.deepEqual(errors, []);
+    } finally {
+        await page.close();
+    }
+});
+
+test('the page says when automatic sign-in is on with a provider it cannot use', async () => {
+    for (const [provider, chosen] of [['other', 'OID/other'], ['deleted', '']]) {
+        const { page, errors } = await load({ ...configuration(), AutoSignInProvider: provider });
+        try {
+            assert.equal(await page.inputValue('#AutoSignInProvider'), chosen);
+            assert.equal(await page.$eval('#AutoSignInUnusable', element => element.classList.contains('hide')), false);
+            assert.equal(
+                await page.textContent('#AutoSignInUnusable'),
+                `Automatic sign-in is on, but ${provider} is not an enabled provider, so Jellyfin Web shows its login page.`);
+            assert.deepEqual(errors, []);
+        } finally {
+            await page.close();
+        }
+    }
+});
+
+test('a provider choice not yet saved survives saving a provider', async () => {
+    const { page, errors } = await load();
+    try {
+        await page.selectOption('#AutoSignInProvider', 'SAML/keycloak');
+        await page.uncheck('#EnableAutoSignIn', { force: true });
+
+        await loadProvider(page, 'authelia');
+        await page.click('#SaveProvider');
+        await page.waitForFunction(() => window.saved.length === 1);
+        await page.waitForFunction(() => window.alerts.length === 1);
+
+        assert.equal(await page.inputValue('#AutoSignInProvider'), 'SAML/keycloak');
+        assert.equal(await page.isChecked('#EnableAutoSignIn'), false);
+        assert.equal((await page.evaluate(() => window.saved[0])).AutoSignInProvider, 'authelia');
+        assert.deepEqual(errors, []);
     } finally {
         await page.close();
     }

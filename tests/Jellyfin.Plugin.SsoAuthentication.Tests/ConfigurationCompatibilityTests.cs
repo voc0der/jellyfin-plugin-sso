@@ -72,6 +72,10 @@ public sealed class ConfigurationCompatibilityTests
     {
         using (var scope = new PluginScope(Fixture()))
         {
+            scope.Plugin.Configuration.EnableAutoSignIn = true;
+            scope.Plugin.Configuration.AutoSignInProvider = "keycloak";
+            scope.Plugin.Configuration.AutoSignInProtocol = "SAML";
+
             // UpdateConfiguration writes the file through Jellyfin's serializer, as saving
             // the settings page does.
             scope.Plugin.UpdateConfiguration(scope.Plugin.Configuration);
@@ -84,7 +88,20 @@ public sealed class ConfigurationCompatibilityTests
             Assert.Equal("groups", oid.RoleClaim);
             Assert.Equal("kids", Assert.Single(saml.FolderRoleMapping).Role);
             Assert.Equal(8443, saml.PortOverride);
+            Assert.True(reloaded.Plugin.Configuration.EnableAutoSignIn);
+            Assert.Equal("keycloak", reloaded.Plugin.Configuration.AutoSignInProvider);
+            Assert.Equal("SAML", reloaded.Plugin.Configuration.AutoSignInProtocol);
         }
+    }
+
+    [Fact]
+    public void Settings_from_before_automatic_sign_in_load_with_it_off()
+    {
+        using var scope = new PluginScope(legacyConfigurationXml: Fixture());
+
+        Assert.False(scope.Plugin.Configuration.EnableAutoSignIn);
+        Assert.Null(scope.Plugin.Configuration.AutoSignInProvider);
+        Assert.Null(scope.Plugin.Configuration.AutoSignInProtocol);
     }
 
     [Fact]

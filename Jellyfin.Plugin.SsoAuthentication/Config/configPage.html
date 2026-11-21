@@ -61,6 +61,74 @@
             to accomplish this.
           </p>
 
+          <form id="sso-auto-sign-in" class="esqConfigurationForm">
+            <div
+              class="verticalSection"
+              is="emby-collapse"
+              title="Automatic Sign-In"
+            >
+              <div class="collapseContent">
+                <div
+                  class="checkboxContainer checkboxContainer-withDescription"
+                >
+                  <label>
+                    <input
+                      is="emby-checkbox"
+                      id="EnableAutoSignIn"
+                      name="EnableAutoSignIn"
+                      type="checkbox"
+                    />
+                    <span>Enable Automatic Sign-In</span>
+                  </label>
+                  <div class="fieldDescription checkboxFieldDescription">
+                    Someone who opens Jellyfin Web without being signed in goes
+                    straight to the provider below instead of the login page,
+                    and comes back signed in, without a click if the provider
+                    already knows them.
+                    <br />
+                    The login page still shows after someone signs out, after a
+                    sign-in through the provider that does not work, at
+                    <code>/web/#/login</code>, and in apps that show Jellyfin
+                    Web, such as the Android app. Keep a sign-in button on it
+                    for them.
+                  </div>
+                </div>
+
+                <div class="selectContainer">
+                  <label class="selectLabel" for="AutoSignInProvider"
+                    >Provider:</label
+                  >
+                  <select
+                    is="emby-select"
+                    id="AutoSignInProvider"
+                    name="AutoSignInProvider"
+                    class="emby-select-withcolor emby-select"
+                  ></select>
+                  <div class="selectArrowContainer">
+                    <div style="visibility: hidden; display: none">0</div>
+                    <span
+                      class="selectArrow material-icons keyboard_arrow_down"
+                      aria-hidden="true"
+                    ></span>
+                  </div>
+                  <div class="fieldDescription">
+                    An enabled OpenID or SAML provider.
+                  </div>
+                  <div id="AutoSignInUnusable" class="fieldDescription hide"></div>
+                </div>
+
+                <button
+                  id="SaveAutoSignIn"
+                  is="emby-button"
+                  type="button"
+                  class="raised button-submit block emby-button"
+                >
+                  <span>Save</span>
+                </button>
+              </div>
+            </div>
+          </form>
+
           <form id="sso-load-config" class="esqConfigurationForm">
             <div
               class="verticalSection"

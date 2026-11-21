@@ -16,6 +16,7 @@ import {
 } from './harness/session.mjs';
 import {
     ADMIN,
+    AUTH_URL,
     EXPOSED_USER,
     JELLYFIN_URL,
     LOCAL_USER,
@@ -161,6 +162,140 @@ test('an account with a password links its Authelia identity and then signs in w
     await signInWithSso(page, 'dave');
     expect(await currentUserId(page)).toBe(localUserId);
     expect(await jellyfinUser('dave')).toBeUndefined();
+});
+
+test.describe('automatic sign-in', () => {
+    let original;
+    const configurationPath = `/Plugins/${PLUGIN_ID}/Configuration`;
+
+    test.beforeAll(async () => {
+        original = await admin('GET', configurationPath);
+    });
+
+    test.afterAll(async () => {
+        if (original) await admin('POST', configurationPath, original);
+    });
+
+    test('the dashboard turns it on without a restart', async ({ page }) => {
+        await signInAsAdmin(page);
+        await page.evaluate(() => { location.hash = '#/configurationpage?name=SSO%20Authentication'; });
+        await expect(page.locator('#sso-config-page')).toBeVisible();
+        await page.locator('#AutoSignInProvider').selectOption(`OID/${PROVIDER}`);
+        await page.locator('#EnableAutoSignIn').check({ force: true });
+        await page.locator('#SaveAutoSignIn').click();
+        await expect.poll(async () => (await admin('GET', configurationPath)).EnableAutoSignIn).toBe(true);
+
+        const html = await page.evaluate(async () => (await fetch(location.pathname)).text());
+        expect(html).toContain('data-sso-auto-sign-in');
+    });
+
+    test('a fresh browser signs in and an existing provider session signs in without a click', async ({ page }) => {
+        await signInAtAuthelia(page, 'alice', `${JELLYFIN_URL}/web/`);
+        await page.waitForURL(/#\/home/);
+        const alice = await jellyfinUser('alice');
+        await expect.poll(() => currentUserId(page)).toBe(alice.Id);
+        expect(await quickConnectSignIn(await currentToken(page))).toEqual({ status: 200, userId: alice.Id });
+
+        // Keep Authelia's session but remove Jellyfin's: the next visit needs no login form.
+        await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+        await page.goto('about:blank');
+        const exchange = page.waitForResponse(response => response.url().includes(`/sso/OID/Auth/${PROVIDER}`) && response.status() === 200);
+        await page.goto(`${JELLYFIN_URL}/web/index.html#/home?tab=1`, { waitUntil: 'commit' });
+        await exchange;
+        await page.waitForURL(/#\/home\?tab=1$/);
+        await expect.poll(() => currentUserId(page)).toBe(alice.Id);
+        await expect(page.getByRole('button', { name: 'User Menu' })).toBeVisible();
+
+        // A valid Jellyfin session survives a reload without a new trip to the provider.
+        const token = await currentToken(page);
+        const starts = [];
+        page.on('request', request => { if (request.url().includes('/sso/OID/start/')) starts.push(request.url()); });
+        await page.reload();
+        await expect.poll(() => currentToken(page)).toBe(token);
+        expect(starts).toEqual([]);
+    });
+
+    test('explicit login and Android WebView keep the normal login page', async ({ page, browser }) => {
+        await page.goto(`${JELLYFIN_URL}/web/#/login`);
+        await expect(page.locator('#txtManualName')).toBeVisible();
+        await page.goto(`${JELLYFIN_URL}/web/`);
+        await expect(page.locator('#txtManualName')).toBeVisible();
+
+        const context = await browser.newContext({
+            ignoreHTTPSErrors: true,
+            userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.0.0 Mobile Safari/537.36'
+        });
+        try {
+            const app = await context.newPage();
+            await app.goto(`${JELLYFIN_URL}/web/`);
+            await expect(app.locator('#txtManualName')).toBeVisible();
+            expect(new URL(app.url()).origin).toBe(JELLYFIN_URL);
+        } finally {
+            await context.close();
+        }
+    });
+
+    test('a revoked Jellyfin session is renewed through the existing provider session', async ({ page }) => {
+        await signInAtAuthelia(page, 'alice', `${JELLYFIN_URL}/web/`);
+        await page.waitForURL(/#\/home/);
+        await expect.poll(() => currentToken(page)).toBeTruthy();
+        const token = await currentToken(page);
+        const revoked = await fetch(`${stack().base}/Sessions/Logout`, {
+            method: 'POST',
+            headers: { Authorization: `MediaBrowser Token="${token}"` }
+        });
+        expect(revoked.status).toBe(204);
+        await page.evaluate(() => {
+            const key = 'sso-auto-sign-in-tried';
+            const attempt = JSON.parse(sessionStorage.getItem(key));
+            attempt.at = Date.now() - 120000;
+            sessionStorage.setItem(key, JSON.stringify(attempt));
+        });
+        const exchange = page.waitForResponse(response => response.url().includes(`/sso/OID/Auth/${PROVIDER}`) && response.status() === 200);
+        await page.reload();
+        await exchange;
+        await page.waitForURL(/#\/home/);
+        await expect.poll(() => currentUserId(page)).toBe((await jellyfinUser('alice')).Id);
+        await expect.poll(() => currentToken(page)).toBeTruthy();
+        await expect.poll(() => currentToken(page)).not.toBe(token);
+    });
+
+    test('signing out stays signed out across reloads and tabs', async ({ page }) => {
+        await signInAtAuthelia(page, 'alice', `${JELLYFIN_URL}/web/`);
+        await page.waitForURL(/#\/home/);
+        await page.getByRole('button', { name: 'User Menu' }).click();
+        await page.getByRole('menuitem', { name: 'Sign Out', exact: true }).click();
+        await expect(page.locator('#txtManualName')).toBeVisible();
+        await page.reload();
+        await expect(page.locator('#txtManualName')).toBeVisible();
+        const other = await page.context().newPage();
+        await other.goto(`${JELLYFIN_URL}/web/`);
+        await expect(other.locator('#txtManualName')).toBeVisible();
+    });
+
+    test('a rejected sign-in returns to login without trying the provider again', async ({ page }) => {
+        await signInAtAuthelia(page, 'mallory', `${JELLYFIN_URL}/web/`);
+        await expect(page.locator('#txtManualName')).toBeVisible();
+        await page.goto(`${JELLYFIN_URL}/web/`);
+        await expect(page.locator('#txtManualName')).toBeVisible();
+        expect(await jellyfinUser('mallory')).toBeUndefined();
+        expect(new URL(page.url()).origin).not.toBe(AUTH_URL);
+    });
+
+    test('a failed session exchange returns to login', async ({ page }) => {
+        await page.route('**/sso/OID/Auth/*', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
+        await signInAtAuthelia(page, 'alice', `${JELLYFIN_URL}/web/`);
+        await expect(page.locator('#txtManualName')).toBeVisible();
+        await page.reload();
+        await expect(page.locator('#txtManualName')).toBeVisible();
+    });
+
+    test('disabling it restores the original page immediately', async ({ page }) => {
+        await admin('POST', configurationPath, { ...original, EnableAutoSignIn: false });
+        const response = await page.goto(`${JELLYFIN_URL}/web/`);
+        expect(await response.text()).not.toContain('data-sso-auto-sign-in');
+        await expect(page.locator('#txtManualName')).toBeVisible();
+    });
 });
 
 // Last, because each makes Jellyfin's container again, as an admin changing the variable in a
