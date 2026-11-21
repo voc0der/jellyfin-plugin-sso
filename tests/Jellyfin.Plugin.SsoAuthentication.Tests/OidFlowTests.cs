@@ -444,8 +444,9 @@ public sealed class OidFlowTests : IDisposable
         var account = TestUsers.Create("alice", Guid.NewGuid());
         account.Password = "existing-password-hash";
         Config.CanonicalLinks = new SerializableDictionary<string, Guid> { ["alice"] = account.Id };
-        // The first lookup finds the linked account, but the second observes its deletion.
-        _harness.Users.GetUserById(account.Id).Returns(account, (User?)null);
+        // The first lookup finds the linked account, but the second observes its deletion. A bare
+        // null would be Returns' whole params array, so every lookup would find the account.
+        _harness.Users.GetUserById(account.Id).Returns(account, [null]);
         var authorization = await Start();
         await Callback(authorization);
 
