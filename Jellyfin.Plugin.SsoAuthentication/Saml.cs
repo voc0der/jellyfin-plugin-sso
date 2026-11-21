@@ -107,7 +107,17 @@ public class Response
             return false;
         }
 
-        signedXml.LoadXml((XmlElement)nodeList[0]);
+        try
+        {
+            signedXml.LoadXml((XmlElement)nodeList[0]);
+        }
+        catch (ArgumentException)
+        {
+            // Loading looks each "#" reference up by its ID, and an empty one throws this rather
+            // than a CryptographicException.
+            return false;
+        }
+
         return ValidateSignatureReference(signedXml) && signedXml.CheckSignature(_certificate, true) && !IsExpired();
     }
 
@@ -122,7 +132,16 @@ public class Response
         }
 
         var reference = (Reference)signedXml.SignedInfo.References[0];
-        var id = reference.Uri.Substring(1);
+
+        // SAML signs a reference to the signed element's ID: "#" and then the ID. Anything else,
+        // no URI included, cannot be to the response or its assertion.
+        var uri = reference.Uri;
+        if (uri is null || uri.Length < 2 || uri[0] != '#')
+        {
+            return false;
+        }
+
+        var id = uri.Substring(1);
 
         var idElement = signedXml.GetIdElement(_xmlDoc, id);
 
