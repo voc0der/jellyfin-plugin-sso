@@ -45,6 +45,7 @@ It continues [9p4/jellyfin-plugin-sso](https://github.com/9p4/jellyfin-plugin-ss
 - The provider's groups or roles decide who may sign in, who is an administrator, which libraries each account sees, and Live TV access and management
 - People with an existing Jellyfin account link their provider identity themselves at `/SSOViews/linking`
 - Accounts made by sign-in have no usable password: they sign in through the provider only. So does an existing account that would take an empty password, once its owner signs in
+- Password sign-in can be [turned off](#turning-off-password-sign-in) for the whole server with `JELLYFIN_ENABLE_PASSWORD_LOGIN=false` in its environment, and back on by removing it
 - Imports the providers and linked accounts of 9p4's plugin on first start
 - Optional profile pictures from a provider claim
 - A settings page for OpenID providers, and an API for both protocols
@@ -138,6 +139,38 @@ a.raised.emby-button {
 ```
 
 ![screenshot of the branding settings with the same code](docs/images/custom-button.png)
+
+### Turning off password sign-in
+
+To have everyone sign in through the provider, set `JELLYFIN_ENABLE_PASSWORD_LOGIN=false` in Jellyfin's environment and restart it. With Docker Compose:
+
+```yaml
+services:
+  jellyfin:
+    environment:
+      JELLYFIN_ENABLE_PASSWORD_LOGIN: "false"
+```
+
+Jellyfin then answers every username and password, right or wrong, with 403 Forbidden, without checking it. Jellyfin Web shows that as "You are not authorized to access the server at this time". Nothing else changes:
+
+- Sign-in through the provider works as before, and so does [Quick Connect](https://jellyfin.org/docs/general/server/quick-connect), so apps can still be signed in by approving them from a browser.
+- Devices already signed in stay signed in, and API keys keep working. **Dashboard -> Devices** signs devices out, to have their owners sign in again.
+- Accounts keep their passwords, unused while passwords are off. Passwords other plugins check, such as LDAP's, are refused too.
+
+Before turning passwords off, make sure an administrator can sign in through the provider (`adminRoles`), or nobody will reach the dashboard. To turn passwords back on, remove the variable or set it to `true`, and restart Jellyfin. That is also the way back in when the provider is down: the switch is in the server's environment, so changing it needs nobody to sign in. Unset, or set to anything but `false`, passwords work as they always have.
+
+At startup, the log says when passwords are off, and warns of a value that is neither `true` nor `false`. Each refused password sign-in is logged with the address it came from.
+
+Jellyfin Web still shows its password form. To leave only Quick Connect and the [sign-in button](#a-sign-in-button-on-the-login-page), add this to **Custom CSS code** too:
+
+```css
+#loginPage .manualLoginForm,
+#loginPage .visualLoginForm,
+#loginPage .btnManual,
+#loginPage .btnForgotPassword {
+  display: none !important;
+}
+```
 
 ### Linking existing accounts
 

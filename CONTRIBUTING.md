@@ -46,8 +46,9 @@ dotnet test --configuration Release
 tampering, signature wrapping, expiry, external entities), the SAML sign-in from the provider's
 post to the Jellyfin session, account creation and the permissions roles give, locking accounts
 that would take an empty password, account linking and who may change whose links, the settings
-API and which endpoints need an administrator, the plugin's identity and embedded pages, and
-importing a settings file in the format 9p4's 4.0.0.4 writes. Its user manager behaves as
+API and which endpoints need an administrator, the plugin's identity and embedded pages,
+importing a settings file in the format 9p4's 4.0.0.4 writes, and which values of
+`JELLYFIN_ENABLE_PASSWORD_LOGIN` turn password sign-in off and which requests that refuses. Its user manager behaves as
 Jellyfin 12's does where that matters: a lookup returns a fresh copy of the account, so a change
 only counts once it is saved.
 

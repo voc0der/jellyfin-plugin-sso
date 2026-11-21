@@ -2,7 +2,8 @@ name: Sign-in
 
 # Signs in to a real Jellyfin through a real Authelia with this commit's release archive of the
 # plugin installed, behind a TLS proxy: new accounts, administrators, someone the provider's
-# groups keep out, account linking, and the settings page in the dashboard. A plugin that loads
+# groups keep out, account linking, the settings page in the dashboard, and turning password
+# sign-in off and on again with JELLYFIN_ENABLE_PASSWORD_LOGIN. A plugin that loads
 # but hands Jellyfin Web a session it cannot use, or makes accounts anyone can sign in to with
 # an empty password, builds and passes every unit test, so nothing else here would notice.
 #

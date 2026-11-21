@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Jellyfin.Plugin.SsoAuthentication.Api;
 using Jellyfin.Plugin.SsoAuthentication.Config;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -37,6 +38,7 @@ public class SSOPlugin : BasePlugin<PluginConfiguration>, IPlugin, IHasWebPages
     {
         Instance = this;
         ImportLegacyConfiguration(logger);
+        PasswordSignIn.Log(logger, Environment.GetEnvironmentVariable(PasswordSignIn.EnvironmentVariable));
     }
 
     /// <summary>

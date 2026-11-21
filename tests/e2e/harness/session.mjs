@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { ADMIN, AUTH_URL, JELLYFIN_URL, PROVIDER, idpPassword, jellyfin } from './stack.mjs';
+import { ADMIN, AUTH_URL, JELLYFIN_URL, PROVIDER, idpPassword, jellyfin, recreateJellyfin } from './stack.mjs';
 
 export function stack() {
     return JSON.parse(process.env.SSO_E2E);
@@ -43,21 +43,65 @@ export async function signInWithPassword(page, user) {
 
 export const signInAsAdmin = page => signInWithPassword(page, ADMIN);
 
-// The status Jellyfin answers a sign-in with this name and an empty password, as anyone on its
-// login page could try: 200 means the account is open.
-export async function emptyPasswordSignIn(name) {
+// The status Jellyfin answers a sign-in with this name and password, as anyone on its login page
+// could try: 200 means it signed in.
+export async function passwordSignIn(name, password) {
     const response = await fetch(`${stack().base}/Users/AuthenticateByName`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: 'MediaBrowser Client="SSO harness", Device="harness", DeviceId="sso-e2e-empty-password", Version="1.0.0"'
+            Authorization: 'MediaBrowser Client="SSO harness", Device="harness", DeviceId="sso-e2e-password", Version="1.0.0"'
         },
-        body: JSON.stringify({ Username: name, Pw: '' })
+        body: JSON.stringify({ Username: name, Pw: password })
     });
     return response.status;
+}
+
+// The same with an empty password: 200 means the account is open to anyone.
+export const emptyPasswordSignIn = name => passwordSignIn(name, '');
+
+// An app signing in with Quick Connect, approved from a session already signed in, as Jellyfin
+// Web approves a code: the account the app was signed in to, or the status that refused it.
+export async function quickConnectSignIn(approverToken) {
+    const app = 'MediaBrowser Client="SSO harness TV", Device="harness TV", DeviceId="sso-e2e-quick-connect", Version="1.0.0"';
+    const { base } = stack();
+    const call = (path, { token, body } = {}) => fetch(base + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token ? `${app}, Token="${token}"` : app },
+        body: body === undefined ? undefined : JSON.stringify(body)
+    });
+
+    const started = await call('/QuickConnect/Initiate');
+    if (!started.ok) {
+        return { status: started.status };
+    }
+
+    const { Secret, Code } = await started.json();
+    const approved = await call(`/QuickConnect/Authorize?code=${encodeURIComponent(Code)}`, { token: approverToken });
+    if (!approved.ok) {
+        return { status: approved.status };
+    }
+
+    const signedIn = await call('/Users/AuthenticateWithQuickConnect', { body: { Secret } });
+    return signedIn.ok ? { status: signedIn.status, userId: (await signedIn.json()).User.Id } : { status: signedIn.status };
+}
+
+// Makes Jellyfin's container again with this environment, and waits until the browser reaches it
+// through the proxy, as the next sign-in will.
+export async function restartJellyfin(page, environment = {}) {
+    await recreateJellyfin(environment);
+    await expect.poll(async () => {
+        const response = await page.goto(`${JELLYFIN_URL}/System/Info/Public`).catch(() => null);
+        return response?.status();
+    }, { timeout: 30_000 }).toBe(200);
 }
 
 // Who Jellyfin Web thinks is signed in, or null until it knows.
 export function currentUserId(page) {
     return page.evaluate(() => window.ApiClient?.getCurrentUserId?.() ?? null);
+}
+
+// The token of the session Jellyfin Web is signed in with.
+export function currentToken(page) {
+    return page.evaluate(() => window.ApiClient?.accessToken?.() ?? null);
 }

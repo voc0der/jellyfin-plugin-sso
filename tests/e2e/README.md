@@ -9,8 +9,15 @@ makes an administrator; that someone outside the allowed group is turned away wi
 made; that an account made by sign-in cannot be signed in to with a password; that an account
 Jellyfin would open with an empty password, as 9p4's plugin left its accounts on Jellyfin 12, is
 locked to sign-in once its owner signs in; that the settings page lists the provider in the
-dashboard; and that an account with a password links an Authelia identity from
-`/SSOViews/linking` and then signs in with it.
+dashboard; that an account with a password links an Authelia identity from
+`/SSOViews/linking` and then signs in with it; and that with `JELLYFIN_ENABLE_PASSWORD_LOGIN=false`
+every password is refused, right or wrong, which Jellyfin Web reports as not authorized, while
+sign-in through Authelia and Quick Connect still work and nobody is signed out, until the variable
+is removed again.
+
+Those last tests make Jellyfin's container again with the variable set, and then without it, as
+changing a Compose file does. Jellyfin's data is in the named volumes `sso-e2e-jellyfin-config`
+and `sso-e2e-jellyfin-cache`, so the accounts, sessions and plugin carry over.
 
 ## Running
 
