@@ -161,6 +161,23 @@ public sealed class PasswordSignInTests
     }
 
     [Fact]
+    public void Finishing_an_allowed_request_keeps_its_response()
+    {
+        var executing = Request("Users/AuthenticateWithQuickConnect");
+        var log = new RecordingLogger<PasswordSignInFilter>();
+        var filter = new PasswordSignInFilter(log);
+        filter.OnResourceExecuting(executing);
+        Assert.Null(executing.Result);
+        var result = new OkObjectResult("session");
+        var executed = new ResourceExecutedContext(executing, executing.Filters) { Result = result };
+
+        filter.OnResourceExecuted(executed);
+
+        Assert.Same(result, executed.Result);
+        Assert.Empty(log.Entries);
+    }
+
+    [Fact]
     public void Startup_says_password_sign_in_is_off()
     {
         var log = new RecordingLogger<SSOPlugin>();

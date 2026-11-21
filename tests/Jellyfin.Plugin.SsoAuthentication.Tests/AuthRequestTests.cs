@@ -11,6 +11,12 @@ namespace Jellyfin.Plugin.SsoAuthentication.Tests;
 /// </summary>
 public sealed class AuthRequestTests
 {
+    [Fact]
+    public void An_unsupported_request_format_returns_no_payload()
+    {
+        Assert.Null(new AuthRequest("client", "https://jf.example.test/acs").GetRequest((AuthRequest.AuthRequestFormat)0));
+    }
+
     private static XmlDocument Decode(string redirectUrl)
     {
         var query = HttpUtility.ParseQueryString(new Uri(redirectUrl).Query);

@@ -73,7 +73,8 @@ internal sealed class PluginScope : IDisposable
     /// </summary>
     /// <param name="existingConfigurationXml">This plugin's settings file, as a server already has it.</param>
     /// <param name="legacyConfigurationXml">The settings file 9p4's plugin left behind, SSO-Auth.xml.</param>
-    public PluginScope(string? existingConfigurationXml = null, string? legacyConfigurationXml = null)
+    /// <param name="blockConfigurationFile">Place a directory at the destination to simulate a failed import.</param>
+    public PluginScope(string? existingConfigurationXml = null, string? legacyConfigurationXml = null, bool blockConfigurationFile = false)
     {
         Root = Directory.CreateTempSubdirectory("sso-auth-tests-").FullName;
         ConfigurationsPath = Path.Join(Root, "plugins", "configurations");
@@ -87,6 +88,11 @@ internal sealed class PluginScope : IDisposable
         if (legacyConfigurationXml is not null)
         {
             File.WriteAllText(LegacyConfigurationFile, legacyConfigurationXml);
+        }
+
+        if (blockConfigurationFile)
+        {
+            Directory.CreateDirectory(ConfigurationFile);
         }
 
         var paths = Substitute.For<IApplicationPaths>();

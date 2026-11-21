@@ -17,6 +17,73 @@ public sealed class SamlResponseTests : IDisposable
     private Response Load(string xml, SamlIdentityProvider? trusted = null)
         => new((trusted ?? _idp).CertificateBase64, SamlIdentityProvider.Base64(xml));
 
+    public static TheoryData<string, string[]> AttributeNames => new()
+    {
+        { "GetUpn", new[] { "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn" } },
+        { "GetEmail", new[] { "User.email", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress", "mail" } },
+        { "GetFirstName", new[] { "first_name", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname", "User.FirstName", "givenName" } },
+        { "GetLastName", new[] { "last_name", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname", "User.LastName", "sn" } },
+        { "GetDepartment", new[] { "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/department", "department" } },
+        { "GetPhone", new[] { "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/homephone", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/telephonenumber" } },
+        { "GetCompany", new[] { "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/companyname", "organization", "User.CompanyName" } },
+        { "GetLocation", new[] { "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/location", "physicalDeliveryOfficeName" } },
+    };
+
+    [Theory]
+    [MemberData(nameof(AttributeNames))]
+    public void Profile_attributes_use_provider_aliases_in_priority_order(string getter, string[] names)
+    {
+        var response = new Response(_idp.CertificateBase64);
+        var read = (Func<string?>)Delegate.CreateDelegate(typeof(Func<string?>), response, getter);
+        // Remove each preferred spelling in turn: the next alias must become the value,
+        // and a response with none of them must return null.
+        for (var start = 0; start <= names.Length; start++)
+        {
+            var attributes = string.Concat(names.Skip(start).Select((name, index) =>
+                $"<saml:Attribute Name=\"{name}\"><saml:AttributeValue>value-{start + index}</saml:AttributeValue></saml:Attribute>"));
+            response.LoadXml(SamlIdentityProvider.Unsigned("alice").Replace("<saml:AttributeStatement>", "<saml:AttributeStatement>" + attributes, StringComparison.Ordinal));
+
+            Assert.Equal(start == names.Length ? null : "value-" + start, read());
+        }
+    }
+
+    [Fact]
+    public void A_signature_with_multiple_references_is_refused()
+    {
+        var document = new XmlDocument { PreserveWhitespace = true };
+        document.LoadXml(_idp.Sign(SamlIdentityProvider.Unsigned("alice")));
+        var reference = document.GetElementsByTagName("Reference", "http://www.w3.org/2000/09/xmldsig#")[0]!;
+        reference.ParentNode!.AppendChild(reference.CloneNode(true));
+
+        Assert.False(Load(document.OuterXml).IsValid());
+    }
+
+    [Theory]
+    [InlineData("missing-date")]
+    [InlineData("missing-confirmation")]
+    [InlineData("invalid-date")]
+    public void Expiry_handling_is_explicit_for_incomplete_provider_responses(string shape)
+    {
+        var document = new XmlDocument { PreserveWhitespace = true };
+        document.LoadXml(SamlIdentityProvider.Unsigned("alice"));
+        var confirmation = (XmlElement)document.GetElementsByTagName("SubjectConfirmationData", SamlIdentityProvider.Assertion)[0]!;
+        if (shape == "missing-date")
+        {
+            confirmation.RemoveAttribute("NotOnOrAfter");
+        }
+        else if (shape == "missing-confirmation")
+        {
+            confirmation.ParentNode!.RemoveChild(confirmation);
+        }
+        else
+        {
+            confirmation.SetAttribute("NotOnOrAfter", "not-a-date");
+        }
+
+        // The existing policy accepts absent expiration metadata but rejects an invalid date.
+        Assert.Equal(shape != "invalid-date", Load(_idp.Sign(document.OuterXml)).IsValid());
+    }
+
     [Fact]
     public void A_response_signed_as_a_whole_is_valid()
     {

@@ -7,8 +7,8 @@ using NSubstitute;
 namespace Jellyfin.Plugin.SsoAuthentication.Tests;
 
 /// <summary>
-/// The OpenID endpoints' refusals, which need no provider to reach. A sign-in that gets
-/// through them is driven against a real Authelia by tests/e2e.
+/// The OpenID endpoints' refusals, which need no provider to reach. OidFlowTests exercises
+/// the rest of the controller with an in-memory provider; tests/e2e uses a real Authelia.
 /// </summary>
 public sealed class OidEndpointTests : IDisposable
 {

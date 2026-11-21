@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.SsoAuthentication.Views;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Controller.Session;
@@ -54,5 +55,52 @@ public sealed class ViewsControllerTests : IDisposable
     public void Anything_else_is_not_found(string view)
     {
         Assert.IsAssignableFrom<NotFoundObjectResult>(Controller().GetView(view));
+    }
+
+    [Fact]
+    public void A_request_before_plugin_initialization_returns_a_clear_error()
+    {
+        // Simulate startup ordering without constructing a plugin; restore the process-wide
+        // instance even if the assertion fails, since other tests depend on it.
+        var instance = typeof(SSOPlugin).GetProperty(nameof(SSOPlugin.Instance))!;
+        var previous = SSOPlugin.Instance;
+        try
+        {
+            instance.SetValue(null, null);
+
+            Assert.Equal("No plugin instance found", Assert.IsType<BadRequestObjectResult>(Controller().GetView("linking")).Value);
+        }
+        finally
+        {
+            instance.SetValue(null, previous);
+        }
+    }
+
+    [Fact]
+    public void A_declared_view_missing_from_the_plugin_assembly_returns_not_found()
+    {
+        // Derived plugins use their own assembly and namespace to locate resources. This
+        // assembly deliberately embeds none, reproducing a missing packaged resource.
+        var previous = SSOPlugin.Instance;
+        try
+        {
+            var paths = Substitute.For<IApplicationPaths>();
+            paths.PluginConfigurationsPath.Returns(_scope.ConfigurationsPath);
+            _ = new PluginWithoutEmbeddedViews(paths);
+
+            Assert.IsType<NotFoundResult>(Controller().GetView("linking"));
+        }
+        finally
+        {
+            typeof(SSOPlugin).GetProperty(nameof(SSOPlugin.Instance))!.SetValue(null, previous);
+        }
+    }
+
+    private sealed class PluginWithoutEmbeddedViews : SSOPlugin
+    {
+        public PluginWithoutEmbeddedViews(IApplicationPaths paths)
+            : base(paths, new TestXmlSerializer(), NullLogger<SSOPlugin>.Instance)
+        {
+        }
     }
 }

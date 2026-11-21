@@ -203,4 +203,26 @@ public sealed class LinkingTests : IDisposable
 
         Assert.Equal(new[] { "bob@idp" }, saml["keycloak"]);
     }
+
+    [Fact]
+    public async Task A_missing_saml_provider_cannot_be_linked()
+    {
+        _harness.SignedInAs(_alice);
+
+        var result = await _harness.Create().AddCanonicalLink("saml", "missing", _alice.Id, Signed("alice@idp"));
+
+        Assert.Equal("No matching provider found", Assert.IsType<BadRequestObjectResult>(result).Value);
+        Assert.Empty(SamlLinks);
+    }
+
+    [Fact]
+    public async Task An_unknown_protocol_cannot_add_or_delete_links()
+    {
+        _harness.SignedInAs(_alice);
+        var controller = _harness.Create();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => controller.AddCanonicalLink("invalid", "keycloak", _alice.Id, Signed("alice@idp")));
+        await Assert.ThrowsAsync<ArgumentException>(() => controller.DeleteCanonicalLink("invalid", "keycloak", _alice.Id, "alice@idp"));
+        Assert.Empty(SamlLinks);
+    }
 }

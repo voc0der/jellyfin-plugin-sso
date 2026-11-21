@@ -224,11 +224,6 @@ public class SSOController : ControllerBase
                                     }
 
                                     json = nextObject.ToObject<IDictionary<string, object>>();
-                                    if (json is null)
-                                    {
-                                        missingSegment = true;
-                                        break;
-                                    }
                                 }
 
                                 // The final step is to take the JSON and turn it from a dictionary into a string
@@ -790,11 +785,7 @@ public class SSOController : ControllerBase
                 throw new ArgumentException($"{mode} is not a valid choice between 'saml' and 'oid'");
         }
 
-        if (links == null)
-        {
-            links = new SerializableDictionary<string, Guid>();
-        }
-
+        // Both configuration getters return an empty dictionary when no links are stored.
         return links;
     }
 
@@ -1073,16 +1064,9 @@ public class SSOController : ControllerBase
 
     private ActionResult CreateCanonicalLink(string mode, string provider, [FromRoute] Guid jellyfinUserId, string providerUserId)
     {
-        SerializableDictionary<string, Guid> links = null;
-        try
-        {
-            links = GetCanonicalLinks(mode, provider);
-        }
-        catch (KeyNotFoundException)
-        {
-            return BadRequest("No matching provider found");
-        }
-
+        // The public linking endpoints have already checked the provider. Sign-in callers
+        // also resolve it before reaching here and must not silently ignore a missing link.
+        var links = GetCanonicalLinks(mode, provider);
         links[providerUserId] = jellyfinUserId;
         UpdateCanonicalLinkConfig(links, mode, provider);
 
@@ -1092,6 +1076,8 @@ public class SSOController : ControllerBase
     private OkResult UpdateCanonicalLinkConfig(SerializableDictionary<string, Guid> links, string mode, string provider)
     {
         var configuration = SSOPlugin.Instance.Configuration;
+        // Every caller first resolves the links through GetCanonicalLinks, which rejects
+        // unknown modes and providers before anything can be changed or saved.
         switch (mode.ToLower())
         {
             case "saml":
@@ -1100,8 +1086,6 @@ public class SSOController : ControllerBase
             case "oid":
                 configuration.OidConfigs[provider].CanonicalLinks = links;
                 break;
-            default:
-                throw new ArgumentException($"{mode} is not a valid choice between 'saml' and 'oid'");
         }
 
         SSOPlugin.Instance.UpdateConfiguration(configuration);

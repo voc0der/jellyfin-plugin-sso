@@ -131,6 +131,20 @@ public sealed class ConfigurationCompatibilityTests
     }
 
     [Fact]
+    public void A_failed_import_is_logged_and_leaves_the_legacy_file_intact()
+    {
+        using var scope = new PluginScope(legacyConfigurationXml: Fixture(), blockConfigurationFile: true);
+
+        Assert.Same(scope.Plugin, SSOPlugin.Instance);
+        Assert.Equal(Fixture(), File.ReadAllText(scope.LegacyConfigurationFile));
+        Assert.False(File.Exists(scope.ConfigurationFile));
+        var (level, message) = Assert.Single(scope.Logger.Entries);
+        Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Error, level);
+        Assert.Contains("Could not import the settings", message, StringComparison.Ordinal);
+        Assert.Contains(scope.LegacyConfigurationFile, message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Canonical_links_read_as_empty_rather_than_null_when_absent()
     {
         // Providers saved before account linking existed have no CanonicalLinks element.
