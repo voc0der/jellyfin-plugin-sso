@@ -40,6 +40,7 @@ It continues [9p4/jellyfin-plugin-sso](https://github.com/9p4/jellyfin-plugin-ss
 ## Features
 
 - OpenID Connect sign-in, run against a real Authelia and Jellyfin 12 on every change
+- Optional [automatic sign-in](#automatic-sign-in) sends browsers to a selected provider when they need to sign in
 - SAML 2.0 sign-in, accepting only responses signed by the provider's certificate
 - Accounts created on first sign-in, and found again by their provider identity even after a rename
 - The provider's groups or roles decide who may sign in, who is an administrator, which libraries each account sees, and Live TV access and management
@@ -139,6 +140,31 @@ a.raised.emby-button {
 ```
 
 ![screenshot of the branding settings with the same code](docs/images/custom-button.png)
+
+### Automatic sign-in
+
+Under **Dashboard -> Plugins -> SSO Authentication**, choose an enabled OpenID or SAML provider
+in **Automatic Sign-In**, check **Enable Automatic Sign-In**, and save that section. It is off
+by default; changes take effect on the next load of Jellyfin Web, without a server restart.
+
+A browser that needs to sign in goes straight to the selected provider. If it already has a
+session with that provider, it returns signed in without a click. Existing Jellyfin sessions
+keep working, and a link to a page inside Jellyfin Web is restored after sign-in.
+
+Signing out, or opening `/web/#/login` directly, keeps the normal login page in that browser
+until someone signs in again. A rejected automatic sign-in or failed session exchange returns
+to that page without retrying in a loop. If the provider itself is unavailable or leaves you on
+its own error page, open `/web/#/login` to return. Include your server's base path if it has one.
+
+Keep the [sign-in button](#a-sign-in-button-on-the-login-page) for those cases and for apps that
+embed Jellyfin Web. Automatic sign-in skips frames, clients with Jellyfin's native shell, and
+Android WebViews; it leaves API authentication and Quick Connect available. It does not turn
+off password sign-in or sign you out of the provider.
+
+The plugin adds its script as Jellyfin serves the web page, without changing files on disk.
+A separately hosted copy of Jellyfin Web does not receive it. If the selected provider is
+removed or disabled, the normal login page is shown, with a warning in the plugin settings and
+server log.
 
 ### Turning off password sign-in
 

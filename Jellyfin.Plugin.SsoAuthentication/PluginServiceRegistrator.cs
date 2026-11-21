@@ -2,6 +2,7 @@ using System;
 using Jellyfin.Plugin.SsoAuthentication.Api;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +16,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        // Always, as automatic sign-in can be turned on at any time from the settings page. Until
+        // it is, Jellyfin Web's page passes through as Jellyfin serves it.
+        serviceCollection.AddSingleton<IStartupFilter, AutoSignInStartupFilter>();
         Register(serviceCollection, Environment.GetEnvironmentVariable(PasswordSignIn.EnvironmentVariable));
     }
 

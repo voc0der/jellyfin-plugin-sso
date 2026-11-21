@@ -85,9 +85,11 @@ public sealed class PasswordSignInTests
 
         using (new EnvironmentVariable(null))
         {
+            // Nothing of the switch: only automatic sign-in's filter, which every server gets.
             var services = new ServiceCollection();
             new PluginServiceRegistrator().RegisterServices(services, Substitute.For<IServerApplicationHost>());
-            Assert.Empty(services);
+            var only = Assert.Single(services);
+            Assert.Equal(typeof(AutoSignInStartupFilter), only.ImplementationType);
         }
     }
 

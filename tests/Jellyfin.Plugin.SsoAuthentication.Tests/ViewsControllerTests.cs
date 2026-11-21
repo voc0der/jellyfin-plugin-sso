@@ -35,6 +35,7 @@ public sealed class ViewsControllerTests : IDisposable
     [InlineData("linking.js", "application/javascript")]
     [InlineData("ApiClient.js", "application/javascript")]
     [InlineData("jellyfin-apiClient.esm.min.js", "application/javascript")]
+    [InlineData("auto-sign-in.js", "application/javascript")]
     [InlineData("style.css", "text/css")]
     [InlineData("emby-restyle.css", "text/css")]
     public void Each_view_is_served_with_its_type(string view, string contentType)

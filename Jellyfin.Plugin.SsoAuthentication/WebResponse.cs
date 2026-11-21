@@ -515,7 +515,20 @@ async function main() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    main();
+    main().catch(function (error) {
+        // A failed exchange after an automatic trip must leave a usable login page.
+        // Manual sign-ins keep their error so the administrator can diagnose it.
+        var attempt;
+        try {
+            attempt = JSON.parse(sessionStorage.getItem('sso-auto-sign-in-tried'));
+        } catch (ignored) { }
+        if (attempt && !attempt.back) {
+            window.location.replace('" + punycodeBaseUrl + @"/web/index.html#/login');
+        } else {
+            document.body.textContent = 'Sign-in failed. Return to Jellyfin and try again.';
+            console.error(error);
+        }
+    });
 });
 
 // https://stackoverflow.com/a/25435165

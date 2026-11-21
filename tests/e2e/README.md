@@ -15,8 +15,14 @@ every password is refused, right or wrong, which Jellyfin Web reports as not aut
 sign-in through Authelia and Quick Connect still work and nobody is signed out, until the variable
 is removed again.
 
-Those last tests make Jellyfin's container again with the variable set, and then without it, as
-changing a Compose file does. Jellyfin's data is in the named volumes `sso-e2e-jellyfin-config`
+Automatic sign-in tests enable it through the dashboard without restarting, sign in through
+Authelia with and without an existing provider session, restore a requested page, keep existing
+Jellyfin sessions, renew revoked sessions, respect logout across tabs, leave explicit login and
+Android WebViews alone, recover from rejected sign-ins and failed session exchanges, and disable
+it again. Quick Connect is also exercised with automatic sign-in enabled.
+
+The password-switch tests make Jellyfin's container again with the variable set, and then without
+it, as changing a Compose file does. Jellyfin's data is in the named volumes `sso-e2e-jellyfin-config`
 and `sso-e2e-jellyfin-cache`, so the accounts, sessions and plugin carry over.
 
 ## Running
