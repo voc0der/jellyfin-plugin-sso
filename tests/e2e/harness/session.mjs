@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { ADMIN, AUTH_URL, JELLYFIN_URL, PROVIDER, idpPassword, jellyfin } from './stack.mjs';
+import { ADMIN, AUTH_URL, JELLYFIN_URL, PROVIDER, idpPassword, jellyfin, recreateJellyfin } from './stack.mjs';
 
 export function stack() {
     return JSON.parse(process.env.SSO_E2E);
@@ -84,6 +84,16 @@ export async function quickConnectSignIn(approverToken) {
 
     const signedIn = await call('/Users/AuthenticateWithQuickConnect', { body: { Secret } });
     return signedIn.ok ? { status: signedIn.status, userId: (await signedIn.json()).User.Id } : { status: signedIn.status };
+}
+
+// Makes Jellyfin's container again with this environment, and waits until the browser reaches it
+// through the proxy, as the next sign-in will.
+export async function restartJellyfin(page, environment = {}) {
+    await recreateJellyfin(environment);
+    await expect.poll(async () => {
+        const response = await page.goto(`${JELLYFIN_URL}/System/Info/Public`).catch(() => null);
+        return response?.status();
+    }, { timeout: 30_000 }).toBe(200);
 }
 
 // Who Jellyfin Web thinks is signed in, or null until it knows.

@@ -7,6 +7,7 @@ import {
     jellyfinUser,
     passwordSignIn,
     quickConnectSignIn,
+    restartJellyfin,
     signInAsAdmin,
     signInAtAuthelia,
     signInWithPassword,
@@ -21,8 +22,7 @@ import {
     PICTURE_PATH,
     PLUGIN_ID,
     PROVIDER,
-    jellyfinLogs,
-    restartJellyfin
+    jellyfinLogs
 } from './harness/stack.mjs';
 
 // Accounts carry this as their authentication provider when sign-in created them: it keeps
@@ -166,8 +166,8 @@ test('an account with a password links its Authelia identity and then signs in w
 // Last, because each makes Jellyfin's container again, as an admin changing the variable in a
 // Compose file does: same data, new environment.
 test.describe('JELLYFIN_ENABLE_PASSWORD_LOGIN', () => {
-    test('false refuses every password, right or wrong, and signs no one out', async () => {
-        await restartJellyfin({ JELLYFIN_ENABLE_PASSWORD_LOGIN: 'false' });
+    test('false refuses every password, right or wrong, and signs no one out', async ({ page }) => {
+        await restartJellyfin(page, { JELLYFIN_ENABLE_PASSWORD_LOGIN: 'false' });
 
         expect(await passwordSignIn(ADMIN.name, ADMIN.password)).toBe(403);
         expect(await passwordSignIn(LOCAL_USER.name, LOCAL_USER.password)).toBe(403);
@@ -203,8 +203,8 @@ test.describe('JELLYFIN_ENABLE_PASSWORD_LOGIN', () => {
         expect(await quickConnectSignIn(await currentToken(page))).toEqual({ status: 200, userId: carol.Id });
     });
 
-    test('unset again, passwords sign in as before', async () => {
-        await restartJellyfin();
+    test('unset again, passwords sign in as before', async ({ page }) => {
+        await restartJellyfin(page);
 
         expect(await passwordSignIn(ADMIN.name, ADMIN.password)).toBe(200);
         expect(await passwordSignIn(LOCAL_USER.name, LOCAL_USER.password)).toBe(200);

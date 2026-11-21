@@ -10,7 +10,6 @@
 import { execFile } from 'node:child_process';
 import { generateKeyPairSync, pbkdf2Sync, randomBytes } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { request } from 'node:https';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -21,9 +20,6 @@ const sleep = ms => new Promise(done => setTimeout(done, ms));
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const HARNESS_ROOT = resolve(HERE, '..');
 export const REPO_ROOT = resolve(HARNESS_ROOT, '../..');
-
-// Where each run's throwaway CA and the certificate it signs for *.sso.test go.
-const CERTIFICATES = join(HARNESS_ROOT, '.build', 'certs');
 
 // The newest Jellyfin release: sign-in has to work on what people run.
 export const JELLYFIN_IMAGE = process.env.JELLYFIN_IMAGE ?? 'jellyfin/jellyfin:12.4';
@@ -397,29 +393,13 @@ async function jellyfinUp(base) {
     });
 }
 
-// What the browser gets from Jellyfin through the proxy, asked the way the browser asks: by name,
-// with the proxy's certificate checked against the harness CA that signed it.
-async function throughProxy(proxyPort, path) {
-    const ca = await readFile(join(CERTIFICATES, 'ca.crt'));
-    const host = new URL(JELLYFIN_URL).hostname;
-    return new Promise((done, fail) => {
-        const call = request({ host: '127.0.0.1', port: proxyPort, path, servername: host, headers: { Host: host }, ca }, response => {
-            response.resume();
-            done(response.statusCode === 200 || `${response.statusCode} through the proxy`);
-        });
-        call.on('error', fail);
-        call.end();
-    });
-}
-
 // Makes Jellyfin's container again with this environment on top of the harness's own, on the same
-// port and with the same data, and waits until it answers directly and through the proxy. Docker
-// cannot change a container's environment, so turning a variable on and off is this, as it is with
-// Compose: a clean stop, then a new container. The new container can come up at a new address,
-// which the proxy has to look up again.
-export async function restartJellyfin(environment = {}) {
+// port and with the same data, and waits until it answers. Docker cannot change a container's
+// environment, so turning a variable on and off is this, as it is with Compose: a clean stop, then
+// a new container. The new container can come up at a new address, so the proxy is reloaded to
+// look it up again rather than keep the old one for the rest of its cache time.
+export async function recreateJellyfin(environment = {}) {
     const port = (await docker('port', JELLYFIN, '8096/tcp')).split('\n')[0].split(':').pop();
-    const proxyPort = (await docker('port', PROXY, '443/tcp')).split('\n')[0].split(':').pop();
 
     await docker('stop', JELLYFIN);
     await docker('rm', JELLYFIN);
@@ -428,7 +408,6 @@ export async function restartJellyfin(environment = {}) {
 
     await jellyfinUp(`http://127.0.0.1:${port}`);
     await docker('exec', PROXY, 'nginx', '-s', 'reload');
-    await waitFor(() => throughProxy(proxyPort, '/System/Info/Public'), 30_000, 'Jellyfin through the proxy');
 }
 
 // The provider as an admin would add it, following the Authelia section of providers.md.
@@ -462,7 +441,7 @@ export async function startStack() {
     const build = join(HARNESS_ROOT, '.build');
     await mkdir(build, { recursive: true });
     const plugins = await stagePlugin(build);
-    const certs = await makeCertificates(CERTIFICATES);
+    const certs = await makeCertificates(join(build, 'certs'));
 
     const ca = await readFile(certs.caCrt);
     await stopStack();
