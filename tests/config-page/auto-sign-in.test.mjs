@@ -106,9 +106,19 @@ async function keepSession(tab, token) {
 async function showLogin(tab, params, id = 'loginPage') {
     const going = goes(tab);
     await tab.evaluate(({ params, id }) => {
-        const view = document.createElement('div');
-        view.id = id;
-        document.body.appendChild(view);
+        let view = document.getElementById(id);
+        if (!view) {
+            view = document.createElement('div');
+            view.id = id;
+            const controls = document.createElement('div');
+            controls.className = 'readOnlyContent';
+            const disclaimer = document.createElement('div');
+            disclaimer.className = 'loginDisclaimerContainer';
+            disclaimer.hidden = true;
+            controls.appendChild(disclaimer);
+            view.appendChild(controls);
+            document.body.appendChild(view);
+        }
         view.dispatchEvent(new CustomEvent('viewshow', { bubbles: true, detail: { type: null, properties: [], params } }));
     }, { params, id });
     return going;
@@ -351,6 +361,91 @@ test('an Android WebView stays on its login page, and Chrome on Android does not
         assert.equal(await open(chrome.tab, '/web/'), true);
     } finally {
         await chrome.context.close();
+    }
+});
+
+test('the native sign-in button uses the app device ID even when its bridge arrives later', async () => {
+    const { context, tab, errors } = await browse({ userAgent: ANDROID_WEBVIEW });
+    try {
+        assert.equal(await open(tab, '/web/'), false);
+        assert.equal(await showLogin(tab, bounce), false);
+        assert.equal(await tab.locator('.btnSsoSignIn').isVisible(), true);
+        assert.equal(await tab.locator('.loginDisclaimerContainer').isVisible(), false);
+
+        await tab.evaluate(() => {
+            localStorage.setItem('_deviceId2', 'stale-web-device');
+            window.NativeShell = { AppHost: { deviceId: () => 'android-device' } };
+        });
+        const going = goes(tab);
+        await tab.locator('.btnSsoSignIn').click();
+        assert.equal(await going, true);
+        assert.equal(await tab.evaluate(() => localStorage.getItem('_deviceId2')), 'android-device');
+        assert.deepEqual(errors, []);
+    } finally {
+        await context.close();
+    }
+});
+
+test('the button survives repeated login views and replacement of disclaimer content', async () => {
+    const { context, tab } = await browse();
+    try {
+        await open(tab, '/web/#/login');
+        await showLogin(tab, {});
+        await tab.locator('.loginDisclaimerContainer').evaluate(element => { element.textContent = 'Branding loaded'; });
+        await showLogin(tab, {});
+        assert.equal(await tab.locator('.btnSsoSignIn').count(), 1);
+
+        // Explicit logout suppresses automatic sign-in, but the button remains usable.
+        assert.notEqual((await notes(tab)).signedOut, null);
+        const going = goes(tab);
+        await tab.locator('.btnSsoSignIn').click();
+        assert.equal(await going, true);
+    } finally {
+        await context.close();
+    }
+});
+
+test('the button can retry a failed sign-in and works when automatic attempt storage is blocked', async () => {
+    for (const blocked of [false, true]) {
+        const { context, tab, errors } = await browse({
+            userAgent: ANDROID_WEBVIEW,
+            init: blocked ? () => Object.defineProperty(window, 'sessionStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } }) : undefined
+        });
+        try {
+            await open(tab, '/web/');
+            if (!blocked) {
+                await tab.evaluate(() => sessionStorage.setItem('sso-auto-sign-in-tried', JSON.stringify({ token: '', at: Date.now() })));
+            }
+            await showLogin(tab, bounce);
+            const going = goes(tab);
+            await tab.locator('.btnSsoSignIn').click();
+            assert.equal(await going, true);
+            assert.deepEqual(errors, []);
+        } finally {
+            await context.close();
+        }
+    }
+});
+
+test('a broken native bridge leaves the login page usable and allows another attempt', async () => {
+    const { context, tab, errors } = await browse({
+        init: () => { window.NativeShell = { AppHost: { deviceId: () => { throw new Error('Bridge unavailable'); } } }; }
+    });
+    try {
+        await open(tab, '/web/');
+        await showLogin(tab, bounce);
+        await tab.locator('.btnSsoSignIn').click();
+        assert.equal(await tab.getByRole('alert').isVisible(), true);
+        assert.equal(await tab.locator('.btnSsoSignIn').isEnabled(), true);
+        assert.equal(tab.url(), `${ORIGIN}/web/`);
+
+        await tab.evaluate(() => { window.NativeShell.AppHost.deviceId = () => 'recovered-device'; });
+        const going = goes(tab);
+        await tab.locator('.btnSsoSignIn').click();
+        assert.equal(await going, true);
+        assert.deepEqual(errors, []);
+    } finally {
+        await context.close();
     }
 });
 

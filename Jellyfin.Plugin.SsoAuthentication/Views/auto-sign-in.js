@@ -21,6 +21,7 @@
 //   until someone signs in. A sign-in that does not work ends on the login page, never in a loop.
 //
 // Back from the provider, the browser opens the page it was first opened at.
+// A sign-in button remains on the login page for apps, explicit logout and failed attempts.
 //
 // Plain ES5: Jellyfin Web's page loads this in every browser that opens it, and one that cannot
 // run it is left with the login page.
@@ -171,16 +172,63 @@
     );
   }
 
-  function go(page) {
+  function go(page, manual) {
     // Noted first: a tab that cannot note that it went could go round in circles.
     var noted = write(session, TRIED, {
       token: fingerprint(storedToken()),
       at: Date.now(),
       page: page,
     });
-    if (noted) {
+    if (noted || manual) {
       window.location.assign("../sso/" + start.protocol + "/start/" + start.provider);
     }
+  }
+
+  function addSignInButton(view) {
+    var container = view.querySelector(".readOnlyContent");
+    if (!container || view.querySelector(".btnSsoSignIn")) {
+      return;
+    }
+
+    // Outside the disclaimer: Jellyfin sanitizes and replaces that content asynchronously,
+    // and the password form may be hidden on servers that only allow SSO.
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "raised button-submit block emby-button btnSsoSignIn";
+    button.textContent = "Sign in with SSO";
+    var error = document.createElement("p");
+    error.setAttribute("role", "alert");
+    error.hidden = true;
+
+    button.addEventListener("click", function () {
+      try {
+        // Native clients use AppHost's device ID without writing Jellyfin Web's storage key.
+        // The SSO completion page needs that key, and must create the session for the same device.
+        var host = window.NativeShell && window.NativeShell.AppHost;
+        if (host && typeof host.deviceId === "function") {
+          var deviceId = host.deviceId();
+          if (typeof deviceId === "string" && deviceId) {
+            local.setItem("_deviceId2", deviceId);
+          }
+        }
+
+        if (!local) {
+          throw new Error("Browser storage is unavailable");
+        }
+      } catch (e) {
+        error.textContent = "Unable to prepare sign-in. Reopen the app or browser and try again.";
+        error.hidden = false;
+        return;
+      }
+
+      button.disabled = true;
+      go("", true);
+      // Allow another click if navigation is interrupted, including a return from the provider.
+      window.setTimeout(function () { button.disabled = false; }, 3000);
+    });
+
+    container.insertBefore(error, container.firstChild);
+    container.insertBefore(button, error);
   }
 
   var token = storedToken();
@@ -219,6 +267,8 @@
     if (!event.target || event.target.id !== "loginPage") {
       return;
     }
+
+    addSignInButton(event.target);
 
     var params = (event.detail && event.detail.params) || {};
     if (!params.serverid || !params.url) {

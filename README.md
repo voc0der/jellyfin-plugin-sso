@@ -156,10 +156,17 @@ until someone signs in again. A rejected automatic sign-in or failed session exc
 to that page without retrying in a loop. If the provider itself is unavailable or leaves you on
 its own error page, open `/web/#/login` to return. Include your server's base path if it has one.
 
-Keep the [sign-in button](#a-sign-in-button-on-the-login-page) for those cases and for apps that
-embed Jellyfin Web. Automatic sign-in skips frames, clients with Jellyfin's native shell, and
-Android WebViews; it leaves API authentication and Quick Connect available. It does not turn
-off password sign-in or sign you out of the provider.
+While automatic sign-in is enabled, the plugin also adds a **Sign in with SSO** button to the
+login page for the selected provider. It remains available after signing out, after a failed
+sign-in, and in apps that embed Jellyfin Web. On Android, the button preserves the app's device
+ID when signing in. No separate script or branding button is needed for this provider.
+
+Automatic redirects skip clients with Jellyfin's native shell and Android WebViews; these
+clients can use the button instead. The script does not run inside frames.
+API authentication and Quick Connect remain available.
+This setting does not turn off password sign-in or sign you out of the provider. Use a
+[custom sign-in button](#a-sign-in-button-on-the-login-page) if automatic sign-in is disabled or
+you want to offer other providers.
 
 The plugin adds its script as Jellyfin serves the web page, without changing files on disk.
 A separately hosted copy of Jellyfin Web does not receive it. If the selected provider is
