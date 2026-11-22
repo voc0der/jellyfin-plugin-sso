@@ -105,3 +105,33 @@ export function currentUserId(page) {
 export function currentToken(page) {
     return page.evaluate(() => window.ApiClient?.accessToken?.() ?? null);
 }
+
+// The login-related NativeShell contract from Jellyfin Android 2.7.3, exercised in Chromium.
+// This tests native device IDs and the mobile layout; it is not an Android APK/emulator test.
+export async function nativeBrowserContext(browser) {
+    const context = await browser.newContext({
+        ignoreHTTPSErrors: true,
+        viewport: { width: 412, height: 915 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.0.0 Mobile Safari/537.36'
+    });
+    await context.addInitScript(() => {
+        window.NativeShell = {
+            AppHost: {
+                init() {},
+                getDefaultLayout: () => 'mobile',
+                supports: command => ['multiserver', 'externallinks'].includes(command.toLowerCase()),
+                deviceId: () => 'sso-harness-android-device',
+                deviceName: () => 'SSO harness Android',
+                appName: () => 'Jellyfin Android',
+                appVersion: () => '2.7.3',
+                getDeviceProfile: builder => builder()
+            },
+            getPlugins: () => [],
+            enableFullscreen() {},
+            disableFullscreen() {}
+        };
+    });
+    return context;
+}

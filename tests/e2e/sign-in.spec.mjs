@@ -5,6 +5,7 @@ import {
     currentUserId,
     emptyPasswordSignIn,
     jellyfinUser,
+    nativeBrowserContext,
     passwordSignIn,
     quickConnectSignIn,
     restartJellyfin,
@@ -229,9 +230,62 @@ test.describe('automatic sign-in', () => {
             const app = await context.newPage();
             await app.goto(`${JELLYFIN_URL}/web/`);
             await expect(app.locator('#txtManualName')).toBeVisible();
+            await expect(app.getByRole('button', { name: 'Sign in with SSO', exact: true })).toBeVisible();
             expect(new URL(app.url()).origin).toBe(JELLYFIN_URL);
         } finally {
             await context.close();
+        }
+    });
+
+    test('the native login button signs in with the app device ID when password forms are hidden', async ({ browser }) => {
+        const context = await nativeBrowserContext(browser);
+        const errors = [];
+        context.on('weberror', error => errors.push(error.error().message));
+        try {
+            const app = await context.newPage();
+            await app.goto(`${JELLYFIN_URL}/web/`);
+            await app.addStyleTag({ content: '#loginPage .manualLoginForm, #loginPage .visualLoginForm, #loginPage .btnManual, #loginPage .btnForgotPassword, #loginPage .loginDisclaimerContainer { display: none !important; }' });
+            const button = app.getByRole('button', { name: 'Sign in with SSO', exact: true });
+            await expect(button).toBeVisible();
+            expect(await app.evaluate(() => localStorage.getItem('_deviceId2'))).toBeNull();
+            const request = app.waitForRequest(request => request.url().includes(`/sso/OID/Auth/${PROVIDER}`));
+            await button.click();
+            await app.waitForURL(url => url.origin === AUTH_URL);
+            await app.locator('#username-textfield').fill('alice');
+            await app.locator('#password-textfield').fill('alice-harness-pw');
+            await app.locator('#sign-in-button').click();
+            expect((await request).postDataJSON().deviceId).toBe('sso-harness-android-device');
+            await app.waitForURL(/#\/home/);
+            await expect.poll(() => currentUserId(app)).toBe((await jellyfinUser('alice')).Id);
+            expect(errors).toEqual([]);
+        } finally {
+            await context.close();
+        }
+    });
+
+    test('Quick Connect leaves the native login view with automatic sign-in off and on', async ({ browser }) => {
+        const config = await admin('GET', configurationPath);
+        try {
+            for (const enabled of [false, true]) {
+                await admin('POST', configurationPath, { ...config, EnableAutoSignIn: enabled });
+                const context = await nativeBrowserContext(browser);
+                try {
+                    const app = await context.newPage();
+                    await app.goto(`${JELLYFIN_URL}/web/`);
+                    const initiated = app.waitForResponse(response => response.url().endsWith('/QuickConnect/Initiate'));
+                    await app.locator('.btnQuick').click();
+                    const { Code } = await (await initiated).json();
+                    await expect(app.locator('#quickConnectAlert')).toBeVisible();
+                    await admin('POST', `/QuickConnect/Authorize?code=${encodeURIComponent(Code)}`);
+                    await app.waitForURL(/#\/home/, { timeout: 20_000 });
+                    await expect.poll(() => currentUserId(app)).toBe((await jellyfinUser(ADMIN.name)).Id);
+                    await expect(app.locator('#loginPage')).not.toBeVisible();
+                } finally {
+                    await context.close();
+                }
+            }
+        } finally {
+            await admin('POST', configurationPath, config);
         }
     });
 
